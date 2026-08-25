@@ -28,15 +28,15 @@ export function setupStationScene() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.5; 
+  renderer.toneMappingExposure = 1.3; // 調低曝光，還原色彩細節
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x010103);
   const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 5000);
 
-  // --- 1. 光照與上帝光源 (God Ray) ---
+  // --- 1. 光照系統 (更真實的太陽強度) ---
   const sunDir = new THREE.Vector3(1.0, 0.5, 0.8).normalize();
-  const sunLight = new THREE.DirectionalLight(0xffeedd, 6.0);
+  const sunLight = new THREE.DirectionalLight(0xffeedd, 3.5); // 將核爆級 6.0 降回 3.5
   sunLight.position.copy(sunDir).multiplyScalar(300);
   scene.add(sunLight);
   scene.add(new THREE.AmbientLight(0x0a1525, 0.3));
@@ -85,7 +85,7 @@ export function setupStationScene() {
   starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
   scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 1.2, vertexColors: true, transparent: true, opacity: 0.95 })));
 
-  // --- 3. 著色器地球 (加入夜間城市燈光) ---
+  // --- 3. 電影級著色器地球 (AAA Cinematic Earth) ---
   const earthRadius = 350;
   const earthShaderMat = new THREE.ShaderMaterial({
     uniforms: { uSunDirection: { value: sunDir }, uTime: { value: 0 } },
@@ -154,38 +154,48 @@ export function setupStationScene() {
 
       void main() {
         vec3 normPos = normalize(vPosition);
-        float n = fbm(normPos * 3.5);
+        float n = fbm(normPos * 2.5); // 優化陸地分佈
         
-        vec3 oceanDeep = vec3(0.01, 0.05, 0.18);
-        vec3 oceanCoast = vec3(0.03, 0.18, 0.35);
-        vec3 landGrass = vec3(0.12, 0.32, 0.15);
-        vec3 landMtn = vec3(0.38, 0.32, 0.22);
+        vec3 color;
+        float isLand = step(0.02, n);
         
-        vec3 surfaceColor;
-        float isLand = step(0.08, n);
+        // 海洋漸變 (深海 -> 淺灘)
         if (isLand < 0.5) {
-          float depth = smoothstep(-0.4, 0.08, n);
-          surfaceColor = mix(oceanDeep, oceanCoast, depth);
+          float depth = smoothstep(-0.4, 0.02, n);
+          color = mix(vec3(0.01, 0.08, 0.25), vec3(0.0, 0.35, 0.55), depth);
         } else {
-          float height = smoothstep(0.08, 0.45, n);
-          surfaceColor = mix(landGrass, landMtn, height);
+          // 陸地漸變 (平原 -> 高山 -> 雪頂)
+          float elevation = smoothstep(0.02, 0.5, n);
+          color = mix(vec3(0.02, 0.15, 0.05), vec3(0.3, 0.25, 0.15), elevation);
+          color = mix(color, vec3(0.8, 0.85, 0.9), smoothstep(0.35, 0.6, n));
         }
+        
+        // 極地冰帽 (Polar Ice Caps)
+        float poleMask = smoothstep(0.75, 0.98, abs(normPos.y));
+        float iceNoise = fbm(normPos * 10.0);
+        color = mix(color, vec3(0.9, 0.95, 1.0), poleMask * (0.5 + 0.5 * iceNoise));
 
         float NdotL = dot(vNormal, uSunDirection);
-        float light = clamp(NdotL, 0.0, 1.0);
         
-        // 夜間城市微光 (金黃色)
+        // 柔和的漫反射 (Wrap Lighting 模擬大氣擴散)
+        float diffuse = max(0.0, (NdotL + 0.15) / 1.15);
+        
+        // 日夜交界線的暮光散射 (Rayleigh Terminator Glow)
+        float terminator = smoothstep(-0.25, 0.15, NdotL) * smoothstep(0.15, -0.25, NdotL);
+        vec3 sunsetGlow = vec3(0.9, 0.3, 0.1) * terminator * 1.2;
+        
+        // 智能城市燈光 (避開海洋與極地)
         float cityGlow = 0.0;
-        if (NdotL < 0.05) {
-            float cityNoise = snoise(normPos * 35.0 + 6.28);
-            cityGlow = step(0.85, abs(cityNoise)) * 1.5 * (1.0 - smoothstep(-0.1, 0.05, NdotL));
+        if (NdotL < 0.0 && isLand > 0.5 && poleMask < 0.1) {
+            float cityNoise = snoise(normPos * 45.0);
+            cityGlow = step(0.75, cityNoise) * smoothstep(0.0, -0.2, NdotL);
         }
         
-        vec3 sunsetGlow = vec3(0.8, 0.35, 0.1) * clamp(1.0 - abs(NdotL) * 3.0, 0.0, 1.0);
-        vec3 dayColor = surfaceColor * (light + 0.06) + sunsetGlow * (1.0 - isLand * 0.5);
-        
-        dayColor += vec3(1.0, 0.7, 0.2) * cityGlow * isLand;
-        gl_FragColor = vec4(dayColor, 1.0);
+        vec3 finalColor = color * (diffuse + 0.03);
+        finalColor += sunsetGlow;
+        finalColor += vec3(1.0, 0.8, 0.3) * cityGlow * 2.5;
+
+        gl_FragColor = vec4(finalColor, 1.0);
       }
     `
   });
@@ -193,19 +203,51 @@ export function setupStationScene() {
   earth.position.set(0, -420, -50);
   scene.add(earth);
 
+  // ☁️ 修復 1：放棄自發光，改用具備真實物理陰影的 Lambert 材質
   const clouds = new THREE.Mesh(
     new THREE.SphereGeometry(earthRadius * 1.015, 64, 64),
-    new THREE.MeshStandardMaterial({ map: getCloudTexture(), transparent: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false, opacity: 0.6 })
+    new THREE.MeshLambertMaterial({ 
+      map: getCloudTexture(), 
+      transparent: true, 
+      blending: THREE.NormalBlending, // 拒絕核爆級發光
+      side: THREE.FrontSide, 
+      depthWrite: false, 
+      opacity: 0.45 
+    })
   );
   clouds.position.copy(earth.position);
   scene.add(clouds);
 
+  // 🌍 修復 2：完美的大氣邊緣散射 (FrontSide Rim Lighting)
   const atmosphere = new THREE.Mesh(
-    new THREE.SphereGeometry(earthRadius * 1.035, 48, 48),
+    new THREE.SphereGeometry(earthRadius * 1.045, 64, 64),
     new THREE.ShaderMaterial({
-      vertexShader: `varying vec3 vNormal; varying vec3 vViewDir; void main() { vec4 mvPos = modelViewMatrix * vec4(position, 1.0); vNormal = normalize(normalMatrix * normal); vViewDir = normalize(-mvPos.xyz); gl_Position = projectionMatrix * mvPos; }`,
-      fragmentShader: `varying vec3 vNormal; varying vec3 vViewDir; void main() { float rim = 1.0 - max(0.0, dot(vNormal, vViewDir)); gl_FragColor = vec4(0.15, 0.65, 1.0, pow(rim, 3.2) * 1.8); }`,
-      transparent: true, blending: THREE.AdditiveBlending, side: THREE.BackSide, depthWrite: false
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        void main() {
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          vNormal = normalize(normalMatrix * normal);
+          vViewPosition = -mvPosition.xyz; // 獲取相機視角向量
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        void main() {
+          vec3 normal = normalize(vNormal);
+          vec3 viewDir = normalize(vViewPosition);
+          // 只在邊緣產生光暈
+          float rim = 1.0 - max(0.0, dot(normal, viewDir));
+          float intensity = smoothstep(0.55, 1.0, rim);
+          gl_FragColor = vec4(0.2, 0.5, 1.0, intensity * 0.85);
+        }
+      `,
+      transparent: true, 
+      blending: THREE.AdditiveBlending, 
+      side: THREE.FrontSide, // 放棄 BackSide，避免全屏幕渲染成史萊姆
+      depthWrite: false
     })
   );
   atmosphere.position.copy(earth.position);
@@ -232,7 +274,7 @@ export function setupStationScene() {
   station.add(ccm, node, targetRing, beacon1, beacon2, beacon3);
   scene.add(station);
 
-  // --- 5. 終極修正：RCS 推進器尾焰 (物理位置精確放置於機身外側) ---
+  // --- 5. RCS 推進器尾焰 ---
   const rcsGroup = new THREE.Group();
   const plumeGeo = new THREE.ConeGeometry(0.15, 1.2, 8);
   plumeGeo.translate(0, -0.6, 0); 
