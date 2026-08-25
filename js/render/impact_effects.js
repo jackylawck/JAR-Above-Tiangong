@@ -7,50 +7,46 @@ export class ImpactFXManager {
     this.camera = camera;
     this.isExploding = false;
     this.shakeIntensity = 0;
-    this.origCamPos = new THREE.Vector3();
 
-    // 碎片爆炸粒子系統
-    this.particleCount = 200;
-    this.geo = new THREE.BufferGeometry();
-    this.positions = new Float32Array(this.particleCount * 3);
+    // 使用 LineSegments 模擬帶有拖尾與拉伸的高速金屬破片
+    this.particleCount = 120;
+    this.positions = new Float32Array(this.particleCount * 6); // 每條線 2 個頂點 (6 個 float)
     this.velocities = [];
 
     for (let i = 0; i < this.particleCount; i++) {
       this.velocities.push(new THREE.Vector3(
-        (Math.random() - 0.5) * 15,
-        (Math.random() - 0.5) * 15,
-        (Math.random() - 0.5) * 15
+        (Math.random() - 0.5) * 22,
+        (Math.random() - 0.5) * 22,
+        (Math.random() - 0.5) * 22
       ));
     }
 
+    this.geo = new THREE.BufferGeometry();
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    this.mat = new THREE.PointsMaterial({
-      color: 0xff4422,
-      size: 0.8,
+    this.mat = new THREE.LineBasicMaterial({
+      color: 0xff5522,
       transparent: true,
-      opacity: 0
+      opacity: 0,
+      blending: THREE.AdditiveBlending
     });
-    this.debrisMesh = new THREE.Points(this.geo, this.mat);
+    this.debrisMesh = new THREE.LineSegments(this.geo, this.mat);
     this.scene.add(this.debrisMesh);
   }
 
-  // 觸發解體碰撞
   triggerCatastrophicFailure(contactPos, onRebootCallback) {
     if (this.isExploding) return;
     this.isExploding = true;
-    this.shakeIntensity = 0.6;
+    this.shakeIntensity = 0.8;
     this.mat.opacity = 1.0;
 
-    // 將所有碎片集中在接觸點
-    const posArr = this.geo.attributes.position.array;
+    const pos = this.geo.attributes.position.array;
     for (let i = 0; i < this.particleCount; i++) {
-      posArr[i * 3] = contactPos.x;
-      posArr[i * 3 + 1] = contactPos.y;
-      posArr[i * 3 + 2] = contactPos.z;
+      const idx = i * 6;
+      pos[idx] = contactPos.x;     pos[idx + 1] = contactPos.y;     pos[idx + 2] = contactPos.z;
+      pos[idx + 3] = contactPos.x; pos[idx + 4] = contactPos.y; pos[idx + 5] = contactPos.z;
     }
     this.geo.attributes.position.needsUpdate = true;
 
-    // 3 秒後自動執行系統重啟
     setTimeout(() => {
       this.isExploding = false;
       this.mat.opacity = 0;
@@ -58,25 +54,33 @@ export class ImpactFXManager {
     }, 3200);
   }
 
-  // 在主迴圈中每幀更新
   update(dt) {
-    // 鏡頭劇烈震顫 (Screen Shake)
+    // 鏡頭劇烈震顫
     if (this.shakeIntensity > 0.001) {
       this.camera.position.x += (Math.random() - 0.5) * this.shakeIntensity;
       this.camera.position.y += (Math.random() - 0.5) * this.shakeIntensity;
-      this.shakeIntensity *= 0.92;
+      this.shakeIntensity *= 0.90;
     }
 
-    // 碎片擴散運動
+    // 更新高速拉絲線段
     if (this.isExploding) {
-      const posArr = this.geo.attributes.position.array;
+      const pos = this.geo.attributes.position.array;
       for (let i = 0; i < this.particleCount; i++) {
-        posArr[i * 3] += this.velocities[i].x * dt;
-        posArr[i * 3 + 1] += this.velocities[i].y * dt;
-        posArr[i * 3 + 2] += this.velocities[i].z * dt;
+        const idx = i * 6;
+        const v = this.velocities[i];
+
+        // 終點向前衝
+        pos[idx + 3] += v.x * dt;
+        pos[idx + 4] += v.y * dt;
+        pos[idx + 5] += v.z * dt;
+
+        // 起點以 0.7 倍速度延遲跟隨形成高速拖尾
+        pos[idx] += v.x * dt * 0.7;
+        pos[idx + 1] += v.y * dt * 0.7;
+        pos[idx + 2] += v.z * dt * 0.7;
       }
       this.geo.attributes.position.needsUpdate = true;
-      this.mat.opacity = Math.max(0, this.mat.opacity - 0.3 * dt);
+      this.mat.opacity = Math.max(0, this.mat.opacity - 0.32 * dt);
     }
   }
 }
