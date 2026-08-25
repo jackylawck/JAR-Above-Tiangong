@@ -4,6 +4,9 @@ export class SpaceAudioManager {
     this.ctx = null;
     this.isMuted = false;
     this.initialized = false;
+    // 將環境音保留為實例變數，以便動態調整
+    this.droneOsc = null;
+    this.droneGain = null;
   }
 
   init() {
@@ -14,18 +17,49 @@ export class SpaceAudioManager {
     this.initialized = true;
   }
 
-  // 1. 深空低頻引擎與生命維持系統共振 (55Hz Sub-Bass Hum)
+  // 1. 動態深空低頻嗡鳴 (Adaptive Drone)
   startAmbientHum() {
     if (!this.ctx) return;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(55, this.ctx.currentTime);
-    gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+    this.droneOsc = this.ctx.createOscillator();
+    this.droneGain = this.ctx.createGain();
+    this.droneOsc.type = 'sine';
+    this.droneOsc.frequency.setValueAtTime(55, this.ctx.currentTime);
+    this.droneGain.gain.setValueAtTime(0.05, this.ctx.currentTime);
 
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start();
+    this.droneOsc.connect(this.droneGain);
+    this.droneGain.connect(this.ctx.destination);
+    this.droneOsc.start();
+  }
+
+  // --- GOTY 核心模組：根據距離動態改變音樂張力 ---
+  updateAdaptiveMusic(distance) {
+    if (!this.ctx || !this.droneOsc) return;
+    // 距離 80m -> 55Hz (平靜), 距離 2m -> 115Hz (極度緊張)
+    const freq = Math.max(55, 115 - distance * 0.75);
+    // 越近越大聲，製造壓迫感
+    const vol = Math.min(0.2, 0.05 + (80 - distance) * 0.002);
+    
+    // 使用 setTargetAtTime 平滑過渡，避免音爆
+    this.droneOsc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.5);
+    this.droneGain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.5);
+  }
+
+  // --- GOTY 核心模組：對接成功結算音效 (A Major和弦) ---
+  playSuccessChime() {
+    if (!this.ctx || this.isMuted) return;
+    const freqs = [440, 554.37, 659.25]; // A大三和弦，帶來神聖與釋放感
+    freqs.forEach((f, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.frequency.value = f;
+      gain.gain.setValueAtTime(0, this.ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.1, this.ctx.currentTime + 0.1 + i * 0.1); // 琵音延遲效果
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 2.0);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 2.0);
+    });
   }
 
   // 2. 經典航太 Quindar Beep + 無線電通話底噪
@@ -77,7 +111,7 @@ export class SpaceAudioManager {
     this.playBurstNoise(0.06);
   }
 
-  // 4. 升級版：衝擊波低通濾波器崩潰 (Filter Collapse) + 次聲波重擊
+  // 4. 衝擊波低通濾波器崩潰 (Filter Collapse) + 次聲波重擊
   playExplosion() {
     if (!this.ctx || this.isMuted) return;
 
