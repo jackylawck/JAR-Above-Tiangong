@@ -73,7 +73,7 @@ function toggleTelemetryPanel() {
 
 if (panelToggleHeader) panelToggleHeader.onclick = toggleTelemetryPanel;
 
-// 煙火粒子
+// 煙火粒子系統
 const FIREWORK_COUNT = 600;
 const fwGeo = new THREE.BufferGeometry();
 const fwPos = new Float32Array(FIREWORK_COUNT * 3);
@@ -133,15 +133,12 @@ function triggerSuccessFireworks(dockPos) {
 
 // 靜態向量複用 (Zero-GC)
 const _rawThrust = new THREE.Vector3();
-const _rawTorque = new THREE.Vector3();
-const _deltaThrust = new THREE.Vector3();
-const _deltaTorque = new THREE.Vector3();
 const _screenPos = new THREE.Vector3();
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
 const _targetQuat = new THREE.Quaternion(0, 0, 0, 1);
+const _rotDelta = new THREE.Quaternion();
 const _imuWrapper = { acc: null, gyro: null }; 
 const currentActualThrust = new THREE.Vector3();
-const currentActualTorque = new THREE.Vector3();
 
 let typeWriterTimeout = null;
 let typeWriterTick = null;
@@ -185,7 +182,6 @@ function startNewMission() {
   engine.omega.set(0, 0, 0);
   engine.fuel = 300.0;
   currentActualThrust.set(0, 0, 0);
-  currentActualTorque.set(0, 0, 0);
   
   missionStartTime = performance.now();
   isMissionActive = true;
@@ -287,25 +283,22 @@ function animate() {
     0,
     -controls.transInput.y * 3.5
   );
-  
-  // 2. 姿態指令映射：大幅提高手動時的敏銳度，但限制最大偏轉
-  const rotActive = controls.rotInput.lengthSq() > 0.005;
-  if (rotActive) {
-    _rawTorque.set(
-      controls.rotInput.y * 0.35,
-      -controls.rotInput.x * 0.35,
-      0
-    );
-  } else {
-    _rawTorque.set(0, 0, 0);
-  }
 
-  // 🚀 關鍵修復：主動姿態鎖定（SAS Active Return-To-Center）
-  // 只要沒有操作姿態搖桿，飛船姿態強制且快速對齊正前方對接口
-  if (!rotActive && isMissionActive) {
-    const snapSpeed = isKid ? 0.15 : 0.08; // 兒童模式極速自動回正
-    engine.quat.slerp(_targetQuat, snapSpeed);
-    engine.omega.set(0, 0, 0); // 瞬間消除殘留角速度
+  // 🚀 2. 姿態控制極致優化（Direct Angular Steering）
+  if (controls.isRotActive && isMissionActive) {
+    // 正在觸控搖桿：直接且靈敏地旋轉視角（上下 Pitch，左右 Yaw）
+    const pitchRate = controls.rotInput.y * 1.2; // 提高靈敏度
+    const yawRate = -controls.rotInput.x * 1.2;
+    
+    _euler.set(pitchRate * dt, yawRate * dt, 0, 'YXZ');
+    _rotDelta.setFromEuler(_euler);
+    engine.quat.multiply(_rotDelta).normalize();
+    engine.omega.set(pitchRate, yawRate, 0);
+  } else if (isMissionActive) {
+    // 🚀 手指放開搖桿：平滑啟動自動回正（1 秒內自動對齊正前方對接口）
+    const returnSpeed = isKid ? 0.08 : 0.04;
+    engine.quat.slerp(_targetQuat, returnSpeed);
+    engine.omega.set(0, 0, 0); // 瞬間消除慣性旋轉
   }
 
   // 立體聲 RCS 音效
@@ -337,9 +330,7 @@ function animate() {
   // 任務結束時安全鎖定
   if (!isMissionActive) {
     _rawThrust.set(0, 0, 0);
-    _rawTorque.set(0, 0, 0);
     currentActualThrust.set(0, 0, 0);
-    currentActualTorque.set(0, 0, 0);
     engine.state[3] = 0;
     engine.state[4] = 0;
     engine.state[5] = 0;
@@ -350,23 +341,24 @@ function animate() {
 
   const massRatio = 3300.0 / (engine.massDry + engine.fuel); 
   const maxThrustRate = 5.0 * massRatio; 
-  const maxTorqueRate = 5.0 * massRatio;
 
-  _deltaThrust.subVectors(_rawThrust, currentActualThrust);
-  if (_deltaThrust.lengthSq() > (maxThrustRate * dt) ** 2) {
-    _deltaThrust.normalize().multiplyScalar(maxThrustRate * dt);
+  const deltaThrustX = _rawThrust.x - currentActualThrust.x;
+  const deltaThrustY = _rawThrust.y - currentActualThrust.y;
+  const deltaThrustZ = _rawThrust.z - currentActualThrust.z;
+  const deltaThrustSq = deltaThrustX * deltaThrustX + deltaThrustY * deltaThrustY + deltaThrustZ * deltaThrustZ;
+
+  if (deltaThrustSq > (maxThrustRate * dt) ** 2) {
+    const len = Math.sqrt(deltaThrustSq);
+    currentActualThrust.x += (deltaThrustX / len) * maxThrustRate * dt;
+    currentActualThrust.y += (deltaThrustY / len) * maxThrustRate * dt;
+    currentActualThrust.z += (deltaThrustZ / len) * maxThrustRate * dt;
+  } else {
+    currentActualThrust.copy(_rawThrust);
   }
-  currentActualThrust.add(_deltaThrust);
 
-  _deltaTorque.subVectors(_rawTorque, currentActualTorque);
-  if (_deltaTorque.lengthSq() > (maxTorqueRate * dt) ** 2) {
-    _deltaTorque.normalize().multiplyScalar(maxTorqueRate * dt);
-  }
-  currentActualTorque.add(_deltaTorque);
-
-  const phys = engine.step(dt, currentActualThrust, currentActualTorque);
+  const phys = engine.step(dt, currentActualThrust, new THREE.Vector3(0,0,0));
   
-  // 保持相機與真實姿態高度一致
+  // 相機直接鎖定當前姿態
   mekf.qNominal.copy(phys.quat);
 
   // 相機同步
