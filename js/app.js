@@ -19,7 +19,10 @@ const fdir = new FDIRSystem();
 const sync = new TimeSynchronizer(0.5);
 const fsm = new MissionFSM();
 const engine = new SpacecraftEngine();
-const { renderer, scene, camera, targetRingPos, earthShaderMat, clouds, beacons, rcsPlumes } = setupStationScene();
+const { 
+  renderer, scene, camera, targetRingPos, 
+  earthShaderMat, clouds, clouds2, beacons, rcsPlumes, wings, corona 
+} = setupStationScene();
 const audio = new SpaceAudioManager();
 const impactFX = new ImpactFXManager(scene, camera);
 const clock = new THREE.Clock();
@@ -61,19 +64,17 @@ const _imuWrapper = { acc: null, gyro: null };
 let currentActualThrust = new THREE.Vector3();
 let currentActualTorque = new THREE.Vector3();
 
-// ==========================================
-// 🚀 修復：加入打字機狀態追蹤與動態翻譯
-// ==========================================
+// 敘事引擎與任務管理
 let typeWriterTimeout = null;
 let typeWriterTick = null;
 let currentNarrativeKey = null;
 
 function playNarrative(key, duration = 4000) {
-  currentNarrativeKey = key; // 記住當前的對話 ID
+  currentNarrativeKey = key;
   const text = i18n.t(key);
   
   clearTimeout(typeWriterTimeout);
-  clearTimeout(typeWriterTick); // 停止可能正在印字的特效
+  clearTimeout(typeWriterTick);
   narrativeText.textContent = '';
   if(narrativeBox) narrativeBox.style.opacity = 1;
   
@@ -106,7 +107,6 @@ function startNewMission() {
   isMissionActive = true;
   if(missionReport) missionReport.classList.add('hidden');
   
-  // 改為傳遞字典 Key
   if (fsm.difficulty === Difficulty.KID) {
     playNarrative('narrKid');
   } else if (fsm.difficulty === Difficulty.SCIENTIST) {
@@ -120,7 +120,7 @@ if(btnRestart) btnRestart.onclick = () => { audio.playRadioBeep(); startNewMissi
 window.addEventListener('touchstart', () => { if(!isMissionActive) startNewMission(); }, {once: true});
 window.addEventListener('click', () => { if(!isMissionActive) startNewMission(); }, {once: true});
 
-// 難度仲裁系統 (CAS)
+// 難度仲裁系統
 let diffIndex = 1;
 const diffLevels = [Difficulty.KID, Difficulty.PRO, Difficulty.SCIENTIST];
 const diffKeys = ['diffKid', 'diffPro', 'diffSci'];
@@ -134,7 +134,12 @@ btnDiff.onclick = () => {
   fsm.setDifficulty(currentDiff);
   btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
   
-  if (currentDiff === Difficulty.SCIENTIST) {
+  if (currentDiff === Difficulty.KID) {
+    btnDiff.style.borderColor = '#00ffaa';
+    btnDiff.style.color = '#00ffaa';
+    btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
+    engine.thrustMultiplier = 4.0; // 兒童模式：4 倍平移加速度
+  } else if (currentDiff === Difficulty.SCIENTIST) {
     btnDiff.style.borderColor = '#ff3344';
     btnDiff.style.color = '#ff3344';
     btnMode.textContent = i18n.t('modeLocked');
@@ -143,6 +148,7 @@ btnDiff.onclick = () => {
     btnDiff.style.borderColor = '#ffaa00';
     btnDiff.style.color = '#ffaa00';
     btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
+    engine.thrustMultiplier = 1.5;
   }
   audio.playRadioBeep();
   if(isMissionActive) startNewMission();
@@ -164,12 +170,8 @@ btnAbort.onclick = () => {
   if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
 };
 
-// ==========================================
-// 🚀 修復：語言切換時即時中斷打字機並替換為全句
-// ==========================================
 document.getElementById('btn-lang').onclick = () => {
   i18n.toggleLanguage();
-  
   btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
   if (fsm.difficulty === Difficulty.SCIENTIST) {
     btnMode.textContent = i18n.t('modeLocked');
@@ -177,13 +179,9 @@ document.getElementById('btn-lang').onclick = () => {
     btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
   }
 
-  // 如果對話框目前正在顯示中，即時打斷並替換語言
   if (currentNarrativeKey && narrativeBox.style.opacity == 1) {
     clearTimeout(typeWriterTick);
     narrativeText.textContent = i18n.t(currentNarrativeKey);
-  } else if (!isMissionActive) {
-    // 處理剛載入網頁時的預設字眼
-    narrativeText.textContent = i18n.currentLang === 'en' ? 'SYSTEM INITIALIZING...' : '系統初始化中...';
   }
 };
 
@@ -283,6 +281,7 @@ function animate() {
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
+  // 失敗處理
   if (fsmResult.statusKey === 'statusOverSpeed' && dist < fsm.dockingThreshold && !impactFX.isExploding && isMissionActive) {
     isMissionActive = false;
     audio.playExplosion();
@@ -302,6 +301,7 @@ function animate() {
     });
   }
 
+  // 成功結算
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
     if(typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
@@ -328,33 +328,49 @@ function animate() {
     }, 2000);
   }
 
-  if (earthShaderMat && earthShaderMat.uniforms.uTime) earthShaderMat.uniforms.uTime.value = now * 0.001;
-  if (clouds) clouds.rotation.y += dt * 0.005;
+  // ==========================================
+  // 動態視覺驅動 (Zero Allocation)
+  // ==========================================
 
+  // 雙層雲視差動態
+  if (clouds) clouds.rotation.y += dt * 0.003;
+  if (clouds2) clouds2.rotation.y += dt * 0.007;
+
+  // 地球著色器時間
+  if (earthShaderMat && earthShaderMat.uniforms.uTime) {
+    earthShaderMat.uniforms.uTime.value = now * 0.001;
+  }
+
+  // 太陽日冕呼吸脈動
+  if (corona) {
+    const pulse = 180 + Math.sin(now / 1400) * 14;
+    corona.scale.set(pulse, pulse, 1);
+  }
+
+  // 信標燈交錯閃爍
   if (beacons) {
-    const blinkPhase = Math.sin(now / 800) > 0;
+    const phase = Math.sin(now / 650) > 0;
     for (let i = 0; i < beacons.length; i++) {
-      beacons[i].material.emissiveIntensity = (i % 2 === 0) ? (blinkPhase ? 2.5 : 0.1) : (blinkPhase ? 0.1 : 2.5);
+      beacons[i].material.emissiveIntensity = (i % 2 === 0) ? (phase ? 2.8 : 0.05) : (phase ? 0.05 : 2.8);
     }
   }
 
+  // RCS 噴焰透明度即時響應
   if (rcsPlumes) {
-    rcsPlumes.left.material.opacity = Math.max(0, -controls.transInput.x * 0.8);
-    rcsPlumes.right.material.opacity = Math.max(0, controls.transInput.x * 0.8);
-    rcsPlumes.up.material.opacity = Math.max(0, -controls.transInput.y * 0.8);
-    rcsPlumes.down.material.opacity = Math.max(0, controls.transInput.y * 0.8);
+    const tx = controls.transInput.x;
+    const ty = controls.transInput.y;
+    if (rcsPlumes.left) rcsPlumes.left.material.opacity = Math.max(0, -tx * 0.9);
+    if (rcsPlumes.right) rcsPlumes.right.material.opacity = Math.max(0, tx * 0.9);
+    if (rcsPlumes.up) rcsPlumes.up.material.opacity = Math.max(0, -ty * 0.9);
+    if (rcsPlumes.down) rcsPlumes.down.material.opacity = Math.max(0, ty * 0.9);
   }
 
-  scene.children.forEach(child => {
-    if (child.isGroup && child.children.length > 3) {
-      const panelL = child.children[child.children.length - 2];
-      const panelR = child.children[child.children.length - 1];
-      if (panelL && panelR && panelL.geometry.type === 'BoxGeometry') {
-        panelL.rotation.x = Math.sin(now * 0.0015) * 0.008;
-        panelR.rotation.x = Math.sin(now * 0.0015 + 1.2) * 0.008;
-      }
+  // 太陽能板柔性結構顫動
+  if (wings) {
+    for (let i = 0; i < wings.length; i++) {
+      wings[i].rotation.x = Math.sin(now * 0.0015 + i * 1.2) * 0.006;
     }
-  });
+  }
 
   impactFX.update(dt);
   renderer.render(scene, camera);
