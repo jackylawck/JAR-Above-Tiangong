@@ -1,149 +1,349 @@
 /* css/mobile-style.css */
-* { box-sizing: border-box; touch-action: none; -webkit-user-select: none; user-select: none; }
-
-/* 1. 全域字體升級：改用等寬字體營造「代碼與儀表」的軍工質感 */
-html, body { 
-  width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; 
-  background: #020308; 
-  font-family: 'Courier New', Courier, monospace; /* 科幻儀表專用字體 */
-  color: #00ffaa; 
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
-#webgl-canvas { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #010103;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, monospace;
+}
 
-/* 2. 視覺欺騙術：CRT 螢幕微掃描線 (讓畫面看起來像是透過頭盔面罩觀看) */
-body::before {
-  content: " ";
-  display: block;
+#webgl-canvas {
   position: absolute;
-  top: 0; left: 0; bottom: 0; right: 0;
-  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px);
-  z-index: 5;
-  pointer-events: none; /* 絕對不能擋住觸控 */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  display: block;
 }
 
-#hud-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 14px; }
-.interactive { pointer-events: auto !important; cursor: pointer; }
-
-/* 頂部主飛行儀表 */
-.flight-director { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-
-/* 3. AAA 級質感：高階玻璃擬態 (Glassmorphism) */
-.primary-telemetry { 
-  background: rgba(2, 12, 24, 0.65); 
-  backdrop-filter: blur(6px); /* 玻璃毛玻璃效果 */
-  -webkit-backdrop-filter: blur(6px); /* 兼容 Safari */
-  border: 1px solid rgba(0, 255, 170, 0.35); 
-  box-shadow: 0 0 20px rgba(0, 255, 170, 0.15), inset 0 0 15px rgba(0, 255, 170, 0.05); 
-  border-radius: 8px; 
-  padding: 10px 14px; 
+#hud-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: env(safe-area-inset-top, 12px) env(safe-area-inset-right, 12px) env(safe-area-inset-bottom, 12px) env(safe-area-inset-left, 12px);
 }
 
-.pri-data-row { font-size: 14px; font-weight: bold; letter-spacing: 1px; color: #fff; text-shadow: 0 0 8px rgba(0, 255, 170, 0.6); }
-.sec-data-row { font-size: 11px; opacity: 0.9; color: #00ffaa; margin-top: 4px; }
-
-/* 按鈕樣式 (增加科幻感與呼吸過渡) */
-.btn-group { display: flex; flex-direction: column; gap: 8px; }
-.hud-btn {
-  background: rgba(0, 255, 170, 0.08);
-  border: 1px solid rgba(0, 255, 170, 0.4);
-  color: #00ffaa;
-  border-radius: 4px;
-  padding: 8px 14px;
-  font-size: 11px;
-  font-family: inherit;
-  font-weight: bold;
-  letter-spacing: 1px;
+.interactive {
   pointer-events: auto;
-  transition: all 0.1s ease-in-out;
 }
-.hud-btn:active { background: #00ffaa; color: #020308; box-shadow: 0 0 15px #00ffaa; }
-.btn-abort { border-color: #ff3344; color: #ff3344; background: rgba(255, 51, 68, 0.08); }
-.btn-abort:active { background: #ff3344; color: #fff; box-shadow: 0 0 15px #ff3344; }
 
-/* CBARS 準心 */
-#crosshair-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90px; height: 90px; pointer-events: none; }
-.crosshair-circle { width: 100%; height: 100%; border: 1px solid rgba(0, 255, 170, 0.25); border-radius: 50%; box-shadow: inset 0 0 20px rgba(0, 255, 170, 0.1); }
-.crosshair-reticle { position: absolute; top: 50%; left: 50%; width: 12px; height: 12px; border: 2px solid #00ff88; transform: translate(-50%, -50%); box-shadow: 0 0 12px #00ff88; }
-
-/* 4. 搖桿升級：捨棄虛線，改用立體內陰影與漸層旋鈕 */
-.joystick-container { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 6px; }
-.stick-zone { 
-  width: 115px; height: 115px; 
-  background: rgba(0, 255, 170, 0.03); 
-  border: 1px solid rgba(0, 255, 170, 0.15); 
-  border-radius: 50%; position: relative; 
-  display: flex; justify-content: center; align-items: center; 
-  pointer-events: auto; 
-  box-shadow: inset 0 0 30px rgba(0,0,0,0.6); 
+/* --- 頂部儀表板與按鈕組 --- */
+.flight-director {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
 }
-.stick-knob { 
-  width: 46px; height: 46px; 
-  background: radial-gradient(circle at 30% 30%, rgba(0,255,170,0.5), rgba(0,255,170,0.1)); 
-  border: 2px solid #00ffaa; 
-  border-radius: 50%; position: absolute; transform: translate(0px, 0px); 
-  box-shadow: 0 0 15px rgba(0, 255, 170, 0.4); 
+
+.primary-telemetry {
+  background: rgba(4, 16, 26, 0.72);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  box-shadow: 0 0 15px rgba(0, 229, 255, 0.15), inset 0 0 15px rgba(0, 229, 255, 0.05);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #00e5ff;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  flex: 1;
+  max-width: 480px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.stick-label { position: absolute; top: -22px; font-size: 10px; color: #00ffaa; font-weight: bold; opacity: 0.7; letter-spacing: 1px; }
 
-/* ==========================================
-   5. 補齊 GOTY 級情感模組 UI (敘事字幕與結算)
-   ========================================== */
+/* 捲起/折疊模式樣式 */
+.primary-telemetry.collapsed {
+  max-width: 320px;
+  padding: 5px 10px;
+  background: rgba(4, 16, 26, 0.85);
+  border-color: rgba(0, 255, 170, 0.5);
+}
 
-/* J.A.R. AI 敘事字幕 */
+.primary-telemetry.collapsed .collapse-hide {
+  display: none !important;
+}
+
+.pri-data-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.sec-data-row {
+  font-size: 11px;
+  margin-top: 4px;
+  color: #a0c4d8;
+  display: flex;
+  gap: 8px;
+}
+
+/* --- 按鈕群 --- */
+.btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.hud-btn {
+  background: rgba(4, 20, 32, 0.75);
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  color: #00e5ff;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: all 0.2s;
+  min-width: 78px;
+  text-align: center;
+}
+
+.hud-btn:active {
+  transform: scale(0.95);
+  background: rgba(0, 229, 255, 0.2);
+}
+
+.btn-abort {
+  border-color: rgba(255, 51, 85, 0.6);
+  color: #ff3355;
+}
+
+.btn-abort.alert {
+  animation: alertBlink 0.6s infinite alternate;
+}
+
+@keyframes alertBlink {
+  from { background: rgba(255, 51, 85, 0.2); box-shadow: 0 0 5px #ff3355; }
+  to { background: rgba(255, 51, 85, 0.6); box-shadow: 0 0 15px #ff3355; }
+}
+
+/* --- CBARS 光學瞄準十字具 --- */
+#crosshair-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 140px;
+  height: 140px;
+  pointer-events: none;
+}
+
+.crosshair-circle {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  border: 1px solid rgba(0, 255, 170, 0.2);
+  border-radius: 50%;
+}
+
+.crosshair-reticle {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 16px; height: 16px;
+  border: 2px solid #00ffaa;
+  box-shadow: 0 0 8px #00ffaa;
+  transform: translate(-50%, -50%);
+  transition: transform 0.05s linear;
+}
+
+/* --- 底部虛擬雙搖桿 --- */
+.joystick-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  width: 100%;
+  padding-bottom: 8px;
+}
+
+.stick-zone {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 229, 255, 0.03) 0%, rgba(0, 229, 255, 0.12) 100%);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.08);
+  touch-action: none;
+}
+
+.stick-label {
+  position: absolute;
+  top: -16px;
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  color: #00ffaa;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 4px rgba(0, 255, 170, 0.5);
+}
+
+.stick-knob {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 255, 170, 0.6) 0%, rgba(0, 229, 255, 0.2) 100%);
+  border: 2px solid #00ffaa;
+  box-shadow: 0 0 10px #00ffaa;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* --- 敘事字幕 --- */
 .narrative-box {
   position: absolute;
-  bottom: 120px;
+  bottom: 125px;
   left: 50%;
   transform: translateX(-50%);
-  width: 85%;
-  max-width: 600px;
-  background: rgba(2, 12, 24, 0.85);
-  backdrop-filter: blur(4px);
-  border-left: 4px solid #00ffaa;
-  padding: 10px 14px;
-  font-size: 13px;
+  background: rgba(3, 12, 22, 0.85);
+  border: 1px solid #00ffaa;
+  box-shadow: 0 0 15px rgba(0, 255, 170, 0.25);
+  border-radius: 6px;
+  padding: 8px 16px;
   color: #fff;
-  text-shadow: 0 0 5px rgba(0,255,170,0.5);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-  border-radius: 2px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.4s ease;
-  z-index: 20;
+  font-size: 12px;
+  max-width: 85%;
+  width: max-content;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: opacity 0.3s;
 }
-.jar-tag { color: #00ffaa; font-weight: bold; margin-right: 8px; }
 
-/* 任務結算彈窗 */
+.jar-tag {
+  background: #00ffaa;
+  color: #010103;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-weight: 800;
+  font-size: 10px;
+}
+
+/* --- 任務結算彈窗 --- */
 .modal-overlay {
-  position: absolute;
+  position: fixed;
   top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(1, 2, 6, 0.85);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 100;
-  pointer-events: auto;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
-.hidden { display: none !important; }
+
+.modal-overlay.hidden {
+  display: none !important;
+}
+
 .report-card {
-  background: rgba(5, 15, 30, 0.95);
+  background: rgba(4, 18, 30, 0.95);
   border: 1px solid #00ffaa;
-  box-shadow: 0 0 35px rgba(0, 255, 170, 0.25);
-  padding: 24px;
-  border-radius: 6px;
-  width: 85%;
-  max-width: 360px;
+  box-shadow: 0 0 25px rgba(0, 255, 170, 0.35);
+  border-radius: 10px;
+  padding: 20px;
+  width: 90%;
+  max-width: 320px;
+  color: #fff;
+  font-family: inherit;
 }
-.report-row { 
-  color: #fff; 
-  font-size: 14px; 
-  margin: 10px 0; 
-  display: flex; 
-  justify-content: space-between; 
-  align-items: center; 
-  border-bottom: 1px solid rgba(0,255,170,0.15);
-  padding-bottom: 4px;
+
+.report-row {
+  margin: 10px 0;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* ========================================================
+   🛰️ 核心修復：橫屏模式（Landscape Cockpit Split Layout）
+   ======================================================== */
+@media screen and (orientation: landscape) {
+  #hud-overlay {
+    padding: 6px 14px;
+  }
+
+  /* 左翼：緊湊型遙測儀表，不擋正中央 */
+  .primary-telemetry {
+    max-width: 260px;
+    padding: 6px 10px;
+    font-size: 11px;
+    background: rgba(4, 16, 26, 0.65);
+  }
+
+  .pri-data-row {
+    font-size: 12px !important;
+  }
+
+  .sec-data-row {
+    font-size: 9.5px;
+  }
+
+  #telem-stream {
+    font-size: 8px !important;
+    gap: 4px !important;
+  }
+
+  /* 右翼：微型化控制按鈕 */
+  .btn-group {
+    gap: 4px;
+  }
+
+  .hud-btn {
+    padding: 4px 6px;
+    font-size: 9.5px;
+    min-width: 62px;
+  }
+
+  /* 底部搖桿向兩側完全收窄 */
+  .stick-zone {
+    width: 88px;
+    height: 88px;
+  }
+
+  .stick-knob {
+    width: 36px;
+    height: 36px;
+  }
+
+  .stick-label {
+    top: -13px;
+    font-size: 8.5px;
+  }
+
+  .narrative-box {
+    bottom: 12px;
+    padding: 4px 10px;
+    font-size: 10px;
+    max-width: 45%;
+  }
+
+  #crosshair-container {
+    width: 100px;
+    height: 100px;
+  }
 }
