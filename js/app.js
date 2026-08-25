@@ -50,7 +50,7 @@ const telemetryPanel = document.getElementById('telemetry-panel');
 const btnCollapse = document.getElementById('btn-collapse');
 const panelToggleHeader = document.getElementById('panel-toggle-header');
 
-let displayRange = 35.0, displaySpeed = 0.35, displayFuel = 300.0;
+let displayRange = 35.0, displaySpeed = 0.25, displayFuel = 300.0;
 let missionStartTime = performance.now();
 let isMissionActive = true;
 let isPanelCollapsed = false;
@@ -134,10 +134,6 @@ const _imuWrapper = { acc: null, gyro: null };
 let currentActualThrust = new THREE.Vector3();
 let currentActualTorque = new THREE.Vector3();
 
-// 相機基礎視向偏移（將預設 -Z 轉向 +Y 航向）
-const _qBaseOffset = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-const _qRender = new THREE.Quaternion();
-
 let typeWriterTimeout = null;
 let typeWriterTick = null;
 let currentNarrativeKey = null;
@@ -168,19 +164,18 @@ function playNarrative(key, duration = 4000) {
 
 function startNewMission() {
   const isKid = fsm.difficulty === Difficulty.KID;
-  const startDist = isKid ? -35.0 : -80.0;
+  const startDist = isKid ? 35.0 : 80.0;
   
-  const randX = (Math.random() - 0.5) * (isKid ? 0.8 : 4.0);
-  const randZ = (Math.random() - 0.5) * (isKid ? 0.8 : 4.0);
+  const randX = (Math.random() - 0.5) * (isKid ? 0.6 : 3.0);
+  const randY = (Math.random() - 0.5) * (isKid ? 0.6 : 3.0);
   
   engine.state[0] = randX;
-  engine.state[1] = startDist;
-  engine.state[2] = randZ;
+  engine.state[1] = randY;
+  engine.state[2] = startDist; // 飛船在 +Z 處
   engine.state[3] = 0;
-  engine.state[4] = isKid ? 0.35 : 0.15;
-  engine.state[5] = 0;
+  engine.state[4] = 0;
+  engine.state[5] = isKid ? -0.25 : -0.15; // 自動朝 -Z 方向前進
   
-  // 姿態歸零
   engine.quat.set(0, 0, 0, 1);
   mekf.qNominal.set(0, 0, 0, 1);
   engine.omega.set(0, 0, 0);
@@ -297,25 +292,38 @@ function animate() {
 
   const isKid = fsm.difficulty === Difficulty.KID;
 
+  // 搖桿推力映射
   _rawThrust.set(
     controls.transInput.x * (isKid ? 2.5 : 1.0),
-    controls.transInput.y * (isKid ? 3.0 : 1.0), // Y 軸為主要進近方向
+    controls.transInput.y * (isKid ? 2.5 : 1.0),
     0
   );
+  
+  // 姿態手感細膩，不劇烈偏轉
   _rawTorque.set(
     controls.rotInput.y * 0.12,
     -controls.rotInput.x * 0.12,
     0
   );
 
-  const currentDist = engine.state[0]**2 + engine.state[1]**2 + engine.state[2]**2;
-  
-  if (fsm.assistMagnet && currentDist < 25.0 && fsm.mode !== MissionModes.ABORT) {
-    const magnetPower = isKid ? 0.08 : 0.03;
-    _rawThrust.x -= engine.state[0] * magnetPower;
-    _rawThrust.z -= engine.state[2] * magnetPower;
+  const currentDist = Math.hypot(engine.state[0], engine.state[1], engine.state[2] - targetRingPos.z);
+
+  // 🚀 兒童模式必中磁吸與自動巡航
+  if (isKid && isMissionActive && fsm.mode !== MissionModes.ABORT) {
+    // 1. 自動巡航：若無向下推煞車，保持平穩前進速度
+    if (controls.transInput.y >= -0.1 && engine.state[5] > -0.2) {
+      _rawThrust.z = -0.5;
+    }
+    // 2. 自動對心磁吸：接近時強制將 X/Y 偏離拉回中心
+    if (currentDist < 25.0) {
+      _rawThrust.x -= engine.state[0] * 0.15;
+      _rawThrust.y -= engine.state[1] * 0.15;
+      // 姿態自動回正
+      mekf.qNominal.slerp(new THREE.Quaternion(0, 0, 0, 1), 0.04);
+    }
   }
-  if (fsm.mode === MissionModes.ABORT) _rawThrust.set(0, -1.0, 0);
+
+  if (fsm.mode === MissionModes.ABORT) _rawThrust.set(0, 0, 1.0);
 
   const massRatio = 3300.0 / (engine.massDry + engine.fuel); 
   const maxThrustRate = 3.5 * massRatio; 
@@ -346,7 +354,7 @@ function animate() {
     mekf.update(syncdData.starQuat, syncdData.lidarPos, null, true, true);
   }
 
-  // 🚀 相機位置與四元數朝向更新（加上基礎偏移，視線正對空間站）
+  // 相機追蹤飛船
   if (screenShake > 0.001) {
     camera.position.set(
       phys.pos.x + (Math.random() - 0.5) * screenShake,
@@ -357,40 +365,38 @@ function animate() {
   } else {
     camera.position.copy(phys.pos);
   }
+  camera.quaternion.copy(mekf.qNominal);
 
-  _qRender.multiplyQuaternions(mekf.qNominal, _qBaseOffset);
-  camera.quaternion.copy(_qRender);
-
-  // 瞄準具投影
+  // 綠色瞄準具投影
   _screenPos.copy(targetRingPos).project(camera);
   const cx = (_screenPos.x * window.innerWidth) / 2;
   const cy = (-_screenPos.y * window.innerHeight) / 2;
   reticle.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
 
-  const dist = phys.pos.length();
+  const distToRing = phys.pos.distanceTo(targetRingPos);
   const speed = phys.vel.length();
   _euler.setFromQuaternion(mekf.qNominal);
 
   const lerpUI = 0.15;
-  displayRange += (dist - displayRange) * lerpUI;
+  displayRange += (distToRing - displayRange) * lerpUI;
   displaySpeed += (speed - displaySpeed) * lerpUI;
   displayFuel += (phys.fuel - displayFuel) * lerpUI;
 
   uiRange.textContent = displayRange.toFixed(2);
   uiRate.textContent = displaySpeed.toFixed(2);
   uiFuel.textContent = displayFuel.toFixed(1);
-  uiAlt.textContent = (400 + (phys.pos.y + 35) / 1000).toFixed(1);
+  uiAlt.textContent = (400 + (35 - phys.pos.z) / 1000).toFixed(1);
   uiRpy.textContent = `${THREE.MathUtils.radToDeg(_euler.x).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.y).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.z).toFixed(0)}`;
-  uiOffset.textContent = Math.hypot(phys.pos.x, phys.pos.z).toFixed(2);
+  uiOffset.textContent = Math.hypot(phys.pos.x, phys.pos.y).toFixed(2);
 
   const totalDist = isKid ? 35.0 : 80.0;
-  const progressVal = Math.min(100, Math.max(0, (1.0 - (dist - 1.5) / totalDist) * 100));
+  const progressVal = Math.min(100, Math.max(0, (1.0 - (distToRing - 1.5) / totalDist) * 100));
   uiProgress.textContent = `${progressVal.toFixed(0)}%`;
 
-  if (dist < 6.0) {
+  if (distToRing < 6.0) {
     uiRange.style.color = '#00ffaa';
     uiRange.style.textShadow = '0 0 12px #00ffaa';
-  } else if (dist < 18.0) {
+  } else if (distToRing < 18.0) {
     uiRange.style.color = '#ffaa00';
     uiRange.style.textShadow = '0 0 8px #ffaa00';
   } else {
@@ -398,7 +404,7 @@ function animate() {
     uiRange.style.textShadow = 'none';
   }
 
-  if (speed > fsm.maxSafeApproachSpeed && dist < 15.0) {
+  if (speed > fsm.maxSafeApproachSpeed && distToRing < 15.0) {
     uiRate.style.color = '#ff3355';
     const glow = 8 + Math.sin(now / 150) * 6;
     uiRate.style.textShadow = `0 0 ${glow}px #ff3355`;
@@ -407,9 +413,10 @@ function animate() {
     uiRate.style.textShadow = 'none';
   }
 
-  if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(dist);
+  if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(distToRing);
 
-  const fsmResult = fsm.evaluate(dist, speed, phys.pos.y);
+  // 衝過頭與對接判定
+  const fsmResult = fsm.evaluate(distToRing, speed, -phys.pos.z);
   
   if (!impactFX.isExploding && isMissionActive) {
     uiFsm.textContent = i18n.t(fsmResult.statusKey);
