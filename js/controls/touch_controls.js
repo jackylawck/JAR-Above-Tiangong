@@ -11,8 +11,8 @@ export class DualTouchControls {
     this.zoneRot = document.getElementById('zone-rot');
     this.knobRot = document.getElementById('knob-rot');
 
-    this.maxRadius = 38; // 搖桿半徑
-    this.deadZone = 0.12; // 12% 物理死區，防止手指微顫造成漂移
+    this.maxRadius = 38;
+    this.deadZone = 0.08;
     this.transTouchId = null;
     this.rotTouchId = null;
 
@@ -20,25 +20,27 @@ export class DualTouchControls {
   }
 
   initEvents() {
-    // 平移搖桿
+    // 平移搖桿監聽
     if (this.zoneTrans) {
       this.zoneTrans.addEventListener('touchstart', (e) => {
-        e.preventDefault();
+        e.stopPropagation();
         const touch = e.changedTouches[0];
         this.transTouchId = touch.identifier;
-        this.updateJoystick(touch, this.zoneTrans, this.knobTrans, this.transInput, false);
+        this.updateJoystick(touch, this.zoneTrans, this.knobTrans, this.transInput);
       }, { passive: false });
 
       this.zoneTrans.addEventListener('touchmove', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         for (let i = 0; i < e.changedTouches.length; i++) {
           if (e.changedTouches[i].identifier === this.transTouchId) {
-            this.updateJoystick(e.changedTouches[i], this.zoneTrans, this.knobTrans, this.transInput, false);
+            this.updateJoystick(e.changedTouches[i], this.zoneTrans, this.knobTrans, this.transInput);
           }
         }
       }, { passive: false });
 
       const resetTrans = (e) => {
+        e.stopPropagation();
         for (let i = 0; i < e.changedTouches.length; i++) {
           if (e.changedTouches[i].identifier === this.transTouchId) {
             this.transTouchId = null;
@@ -47,29 +49,31 @@ export class DualTouchControls {
           }
         }
       };
-      this.zoneTrans.addEventListener('touchend', resetTrans);
-      this.zoneTrans.addEventListener('touchcancel', resetTrans);
+      this.zoneTrans.addEventListener('touchend', resetTrans, { passive: false });
+      this.zoneTrans.addEventListener('touchcancel', resetTrans, { passive: false });
     }
 
-    // 姿態搖桿 (高精度細膩控制)
+    // 姿態搖桿監聽
     if (this.zoneRot) {
       this.zoneRot.addEventListener('touchstart', (e) => {
-        e.preventDefault();
+        e.stopPropagation();
         const touch = e.changedTouches[0];
         this.rotTouchId = touch.identifier;
-        this.updateJoystick(touch, this.zoneRot, this.knobRot, this.rotInput, true);
+        this.updateJoystick(touch, this.zoneRot, this.knobRot, this.rotInput);
       }, { passive: false });
 
       this.zoneRot.addEventListener('touchmove', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         for (let i = 0; i < e.changedTouches.length; i++) {
           if (e.changedTouches[i].identifier === this.rotTouchId) {
-            this.updateJoystick(e.changedTouches[i], this.zoneRot, this.knobRot, this.rotInput, true);
+            this.updateJoystick(e.changedTouches[i], this.zoneRot, this.knobRot, this.rotInput);
           }
         }
       }, { passive: false });
 
       const resetRot = (e) => {
+        e.stopPropagation();
         for (let i = 0; i < e.changedTouches.length; i++) {
           if (e.changedTouches[i].identifier === this.rotTouchId) {
             this.rotTouchId = null;
@@ -78,12 +82,12 @@ export class DualTouchControls {
           }
         }
       };
-      this.zoneRot.addEventListener('touchend', resetRot);
-      this.zoneRot.addEventListener('touchcancel', resetRot);
+      this.zoneRot.addEventListener('touchend', resetRot, { passive: false });
+      this.zoneRot.addEventListener('touchcancel', resetRot, { passive: false });
     }
   }
 
-  updateJoystick(touch, zone, knob, outVector, isRotation) {
+  updateJoystick(touch, zone, knob, outVector) {
     const rect = zone.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
@@ -106,9 +110,8 @@ export class DualTouchControls {
     if (normDist < this.deadZone) {
       outVector.set(0, 0);
     } else {
-      // 二次方平滑曲線 (Expo Curve)：輕推微調，推到底全推力
       const factor = (normDist - this.deadZone) / (1.0 - this.deadZone);
-      const curvedSpeed = factor * factor; // 柔和響應
+      const curvedSpeed = factor * factor;
       outVector.set((normX / normDist) * curvedSpeed, (normY / normDist) * curvedSpeed);
     }
   }
