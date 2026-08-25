@@ -82,9 +82,9 @@ export function setupStationScene() {
   const sunLight = new THREE.DirectionalLight(0xffeedd, 4.0);
   sunLight.position.copy(sunDir).multiplyScalar(300);
   scene.add(sunLight);
-  scene.add(new THREE.AmbientLight(0x0a1525, 0.35));
+  scene.add(new THREE.AmbientLight(0x0a1525, 0.4));
 
-  // 2. 太陽
+  // 2. 太陽與日冕
   const sunGroup = new THREE.Group();
   const sunMesh = new THREE.Mesh(
     new THREE.SphereGeometry(14, 32, 32),
@@ -281,7 +281,7 @@ export function setupStationScene() {
   scene.add(atmosphere);
 
   // ==========================================
-  // 8. 🛰️ 天宮空間站主體（已旋轉對準 -Y 來流方向）
+  // 8. 🛰️ 天宮空間站主體（經典水平 T 字構型）
   // ==========================================
   const station = new THREE.Group();
   const matWhite = new THREE.MeshStandardMaterial({ color: 0xf0f2f5, metalness: 0.4, roughness: 0.3 });
@@ -289,37 +289,42 @@ export function setupStationScene() {
   const matGrey = new THREE.MeshStandardMaterial({ color: 0x6a7b8c, metalness: 0.7, roughness: 0.3 });
   const matSolar = new THREE.MeshStandardMaterial({ color: 0x02162e, metalness: 0.95, roughness: 0.05, emissive: 0x001133 });
 
-  // 核心艙
+  // 核心艙（水平沿 Z 軸佈局，對接口朝向 -Z）
   const core = new THREE.Group();
   const mainBody = addEdgeGlow(new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.6, 10, 32), matWhite));
   mainBody.rotation.x = Math.PI / 2;
-  mainBody.position.z = -2;
+  mainBody.position.z = 2; // 後端大柱段
+  
   const smallBody = addEdgeGlow(new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 4.5, 32), matWhite));
   smallBody.rotation.x = Math.PI / 2;
-  smallBody.position.z = 4.5;
+  smallBody.position.z = -4.5; // 前端小柱段
+  
   const nodeBall = addEdgeGlow(new THREE.Mesh(new THREE.SphereGeometry(2.0, 32, 32), matGold), 0xffaa00, 0.4);
-  nodeBall.position.z = 8.0;
+  nodeBall.position.z = -8.0; // 節點艙球體
+  
   core.add(mainBody, smallBody, nodeBall);
   station.add(core);
 
-  // 綠色對接環
+  // 綠色對接環（位於節點艙前端 Z = -10.5）
   const targetRing = new THREE.Mesh(
     new THREE.TorusGeometry(0.85, 0.06, 16, 32),
     new THREE.MeshBasicMaterial({ color: 0x00ff88 })
   );
-  targetRing.position.set(0, 0, 10.5);
+  targetRing.position.set(0, 0, -10.5);
   station.add(targetRing);
 
-  // 問天與夢天實驗艙
+  // 問天與夢天實驗艙（左右兩翼，沿 X 軸展開）
   const wentian = addEdgeGlow(new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 12, 32), matWhite));
   wentian.rotation.z = Math.PI / 2;
-  wentian.position.set(-7.0, 0, 5.5);
+  wentian.position.set(-7.0, 0, -5.5);
+  
   const mengtian = addEdgeGlow(new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 12, 32), matWhite));
   mengtian.rotation.z = Math.PI / 2;
-  mengtian.position.set(7.0, 0, 5.5);
+  mengtian.position.set(7.0, 0, -5.5);
+  
   station.add(wentian, mengtian);
 
-  // 柔性太陽翼
+  // 柔性太陽翼（巨大展翼）
   const wings = [];
   function createSolarWing(xPos, yRot) {
     const group = new THREE.Group();
@@ -329,7 +334,7 @@ export function setupStationScene() {
     strut.rotation.z = Math.PI / 2;
     strut.position.x = xPos > 0 ? 2 : -2;
     group.add(panel, strut);
-    group.position.set(xPos, 0, 5.5);
+    group.position.set(xPos, 0, -5.5);
     group.rotation.y = yRot;
     wings.push(panel);
     return group;
@@ -340,14 +345,13 @@ export function setupStationScene() {
   // 信標燈組
   const matRed = new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff0000, emissiveIntensity: 1.5 });
   const matBlue = new THREE.MeshStandardMaterial({ color: 0x0066ff, emissive: 0x0044ff, emissiveIntensity: 1.5 });
-  const beacon1 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), matRed); beacon1.position.set(-26, 1.0, 5.5);
-  const beacon2 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), matBlue); beacon2.position.set(26, 1.0, 5.5);
-  const beacon3 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), matRed); beacon3.position.set(0, 3.2, 8.0);
+  const beacon1 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), matRed); beacon1.position.set(-26, 1.0, -5.5);
+  const beacon2 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), matBlue); beacon2.position.set(26, 1.0, -5.5);
+  const beacon3 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), matRed); beacon3.position.set(0, 3.2, -8.0);
   const beacons = [beacon1, beacon2, beacon3];
   station.add(beacon1, beacon2, beacon3);
 
-  // 🚀 關鍵旋轉：將整座天宮空間站繞 X 軸轉 90 度，使對接口朝向 -Y（飛船飛來之方向）
-  station.rotation.x = Math.PI / 2;
+  // 保持標準水平姿態，不再做多餘旋轉
   scene.add(station);
 
   // 9. RCS 推進噴焰
@@ -355,10 +359,10 @@ export function setupStationScene() {
   const plumeMat = new THREE.MeshBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
   const plumes = {};
   const plumeConfigs = [
-    { name: 'left', pos: [-3.2, -1.5, -0.8], rot: [0, 0, Math.PI/2] },
-    { name: 'right', pos: [3.2, -1.5, -0.8], rot: [0, 0, -Math.PI/2] },
-    { name: 'up', pos: [0, -1.5, 1.8], rot: [Math.PI/2, 0, 0] },
-    { name: 'down', pos: [0, -1.5, -2.2], rot: [-Math.PI/2, 0, 0] }
+    { name: 'left', pos: [-3.2, -0.8, -1.5], rot: [0, 0, Math.PI/2] },
+    { name: 'right', pos: [3.2, -0.8, -1.5], rot: [0, 0, -Math.PI/2] },
+    { name: 'up', pos: [0, 1.8, -1.5], rot: [Math.PI/2, 0, 0] },
+    { name: 'down', pos: [0, -2.2, -1.5], rot: [-Math.PI/2, 0, 0] }
   ];
   plumeConfigs.forEach(cfg => {
     const geo = new THREE.ConeGeometry(0.15, 1.2, 8);
@@ -372,12 +376,11 @@ export function setupStationScene() {
   camera.add(rcsGroup);
   scene.add(camera);
 
-  // 對接環在世界座標中的實際位置 (Y = -10.5)
   return {
     renderer,
     scene,
     camera,
-    targetRingPos: new THREE.Vector3(0, -10.5, 0),
+    targetRingPos: new THREE.Vector3(0, 0, -10.5),
     earthShaderMat,
     clouds,
     clouds2,
