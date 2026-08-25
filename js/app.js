@@ -47,7 +47,6 @@ const missionReport = document.getElementById('mission-report');
 const btnRestart = document.getElementById('btn-restart');
 
 let displayRange = 80.0, displaySpeed = 0.15, displayFuel = 300.0;
-let typeWriterTimeout = null;
 let missionStartTime = 0;
 let isMissionActive = false;
 
@@ -62,9 +61,19 @@ const _imuWrapper = { acc: null, gyro: null };
 let currentActualThrust = new THREE.Vector3();
 let currentActualTorque = new THREE.Vector3();
 
-// 敘事引擎與任務管理
-function playNarrative(text, duration = 4000) {
+// ==========================================
+// 🚀 修復：加入打字機狀態追蹤與動態翻譯
+// ==========================================
+let typeWriterTimeout = null;
+let typeWriterTick = null;
+let currentNarrativeKey = null;
+
+function playNarrative(key, duration = 4000) {
+  currentNarrativeKey = key; // 記住當前的對話 ID
+  const text = i18n.t(key);
+  
   clearTimeout(typeWriterTimeout);
+  clearTimeout(typeWriterTick); // 停止可能正在印字的特效
   narrativeText.textContent = '';
   if(narrativeBox) narrativeBox.style.opacity = 1;
   
@@ -73,7 +82,7 @@ function playNarrative(text, duration = 4000) {
     if (i < text.length) {
       narrativeText.textContent += text.charAt(i);
       i++;
-      setTimeout(type, 30);
+      typeWriterTick = setTimeout(type, 30);
     } else {
       typeWriterTimeout = setTimeout(() => {
         if(narrativeBox) narrativeBox.style.opacity = 0;
@@ -97,13 +106,13 @@ function startNewMission() {
   isMissionActive = true;
   if(missionReport) missionReport.classList.add('hidden');
   
-  // 透過 i18n 獲取敘事
+  // 改為傳遞字典 Key
   if (fsm.difficulty === Difficulty.KID) {
-    playNarrative(i18n.t('narrKid'));
+    playNarrative('narrKid');
   } else if (fsm.difficulty === Difficulty.SCIENTIST) {
-    playNarrative(i18n.t('narrSci'));
+    playNarrative('narrSci');
   } else {
-    playNarrative(i18n.t('narrPro'));
+    playNarrative('narrPro');
   }
 }
 
@@ -116,7 +125,6 @@ let diffIndex = 1;
 const diffLevels = [Difficulty.KID, Difficulty.PRO, Difficulty.SCIENTIST];
 const diffKeys = ['diffKid', 'diffPro', 'diffSci'];
 
-// 初始設定動態按鈕的語言
 btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
 btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
 
@@ -156,14 +164,26 @@ btnAbort.onclick = () => {
   if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
 };
 
+// ==========================================
+// 🚀 修復：語言切換時即時中斷打字機並替換為全句
+// ==========================================
 document.getElementById('btn-lang').onclick = () => {
   i18n.toggleLanguage();
-  // 強制更新非 HTML 的動態按鈕文字
+  
   btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
   if (fsm.difficulty === Difficulty.SCIENTIST) {
     btnMode.textContent = i18n.t('modeLocked');
   } else {
     btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
+  }
+
+  // 如果對話框目前正在顯示中，即時打斷並替換語言
+  if (currentNarrativeKey && narrativeBox.style.opacity == 1) {
+    clearTimeout(typeWriterTick);
+    narrativeText.textContent = i18n.t(currentNarrativeKey);
+  } else if (!isMissionActive) {
+    // 處理剛載入網頁時的預設字眼
+    narrativeText.textContent = i18n.currentLang === 'en' ? 'SYSTEM INITIALIZING...' : '系統初始化中...';
   }
 };
 
@@ -263,11 +283,10 @@ function animate() {
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
-  // --- 失敗處理 ---
   if (fsmResult.statusKey === 'statusOverSpeed' && dist < fsm.dockingThreshold && !impactFX.isExploding && isMissionActive) {
     isMissionActive = false;
     audio.playExplosion();
-    playNarrative(i18n.t('narrFail'), 3000);
+    playNarrative('narrFail', 3000);
     
     uiFsm.textContent = i18n.t('statusFail');
     uiFsm.style.color = '#ff3355';
@@ -283,11 +302,10 @@ function animate() {
     });
   }
 
-  // --- 成功結算 ---
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
     if(typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
-    playNarrative(i18n.t('narrSuccess'), 5000);
+    playNarrative('narrSuccess', 5000);
     
     setTimeout(() => {
       const timeTaken = ((performance.now() - missionStartTime) / 1000).toFixed(1);
