@@ -11,68 +11,51 @@ export const Difficulty = {
   SCIENTIST: 'SCIENTIST'
 };
 
-// ==========================================
-// 極致優化：預先配置所有可能的狀態回傳物件 (Zero Allocation)
-// ==========================================
-const FSM_RESULTS = {
-  ABORT:      { statusKey: 'statusAbort',     isAlert: true,  isSuccess: false, isNominal: false },
-  DOCKED:     { statusKey: 'statusDocked',    isAlert: false, isSuccess: true,  isNominal: false },
-  OVER_SPEED: { statusKey: 'statusOverSpeed', isAlert: true,  isSuccess: false, isNominal: false },
-  APPROACH:   { statusKey: 'statusApproach',  isAlert: false, isSuccess: false, isNominal: true  }
-};
-
 export class MissionFSM {
   constructor() {
     this.mode = MissionModes.AUTO;
     this.difficulty = Difficulty.PRO;
-    this.dockingThreshold = 2.0; // 對接容許距離 (m)
-    this.rateLimit = 0.15;       // 最大允許接近速度 (m/s)
-    this.assistMagnet = true;    // 磁力吸附輔助
+    this.dockingThreshold = 2.5;     // 對接成功距離 (m)
+    this.maxSafeApproachSpeed = 0.25; // 安全對接速度 (m/s)
+    this.assistMagnet = true;
   }
 
   setDifficulty(level) {
     this.difficulty = level;
-    switch(level) {
-      case Difficulty.KID:
-        this.dockingThreshold = 6.0; // 寬容度極高
-        this.rateLimit = 0.50;
-        this.assistMagnet = true;
-        break;
-      case Difficulty.PRO:
-        this.dockingThreshold = 2.0; // 標準航太規範
-        this.rateLimit = 0.15;
-        this.assistMagnet = true;
-        break;
-      case Difficulty.SCIENTIST:
-        this.dockingThreshold = 0.8; // 公分級嚴格判定
-        this.rateLimit = 0.05;       // 超過 0.05 m/s 即視為撞毀
-        this.assistMagnet = false;   // 完全無輔助
-        this.mode = MissionModes.MANUAL; // 強制全手動
-        break;
+    if (level === Difficulty.KID) {
+      this.maxSafeApproachSpeed = 1.20; // 兒童版大幅放寬超速限制，不易撞毀
+      this.dockingThreshold = 3.5;      // 判定範圍放寬
+      this.assistMagnet = true;
+    } else if (level === Difficulty.PRO) {
+      this.maxSafeApproachSpeed = 0.25;
+      this.dockingThreshold = 2.0;
+      this.assistMagnet = true;
+    } else if (level === Difficulty.SCIENTIST) {
+      this.maxSafeApproachSpeed = 0.12; // 硬核真實限制
+      this.dockingThreshold = 1.2;
+      this.assistMagnet = false;        // 無自動磁吸輔助
     }
   }
 
-  setMode(newMode) {
-    if (this.difficulty === Difficulty.SCIENTIST && newMode === MissionModes.AUTO) {
-      return false; // 科學家模式下禁止切換回 AUTO
-    }
-    this.mode = newMode;
-    return true;
+  setMode(mode) {
+    this.mode = mode;
   }
 
   evaluate(dist, speed) {
-    // 直接回傳靜態物件參照，不產生任何記憶體垃圾
     if (this.mode === MissionModes.ABORT) {
-      return FSM_RESULTS.ABORT;
+      return { statusKey: 'statusAbort', isAlert: true, isSuccess: false };
     }
 
-    if (dist < this.dockingThreshold) {
-      if (speed <= this.rateLimit) {
-        return FSM_RESULTS.DOCKED;
-      } else {
-        return FSM_RESULTS.OVER_SPEED;
-      }
+    // 成功硬對接判定
+    if (dist <= this.dockingThreshold && speed <= this.maxSafeApproachSpeed) {
+      return { statusKey: 'statusDocked', isAlert: false, isSuccess: true };
     }
-    return FSM_RESULTS.APPROACH;
+
+    // 超速碰撞判定
+    if (dist <= this.dockingThreshold && speed > this.maxSafeApproachSpeed) {
+      return { statusKey: 'statusOverSpeed', isAlert: true, isSuccess: false };
+    }
+
+    return { statusKey: 'statusApproach', isAlert: false, isSuccess: false };
   }
 }
