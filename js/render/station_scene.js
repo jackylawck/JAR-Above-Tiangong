@@ -86,17 +86,18 @@ export function setupStationScene() {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x010103);
-  // 🚀 關鍵：Near Plane 縮小至 0.02m，防止近距離穿模破面
-  const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.02, 5000);
+  
+  // 🚀 近裁切面設為 0.01 米，徹底防止貼近對接口時破面
+  const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.01, 5000);
 
-  // 光照
-  const sunDir = new THREE.Vector3(1.0, 0.7, 0.6).normalize();
+  // 側向光源營造深空立體陰影
+  const sunDir = new THREE.Vector3(1.2, 0.8, 0.6).normalize();
   const sunLight = new THREE.DirectionalLight(0xffeedd, 3.8);
   sunLight.position.copy(sunDir).multiplyScalar(300);
   scene.add(sunLight);
   scene.add(new THREE.AmbientLight(0x0a1525, 0.35));
 
-  // 太陽
+  // 太陽日冕
   const sunGroup = new THREE.Group();
   const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(14, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffeedd }));
   sunMesh.position.copy(sunDir).multiplyScalar(900);
@@ -128,7 +129,7 @@ export function setupStationScene() {
   starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
   scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 1.2, vertexColors: true, transparent: true, opacity: 0.95 })));
 
-  // 地球
+  // 電影級地球
   const earthRadius = 350;
   const earthShaderMat = new THREE.ShaderMaterial({
     uniforms: { uSunDirection: { value: sunDir }, uTime: { value: 0 } },
@@ -264,84 +265,89 @@ export function setupStationScene() {
   scene.add(atmosphere);
 
   // =======================================================
-  // 3. 🛰️ 天宮空間站 — 異體周邊對接機構 (APAS-89 級細節)
+  // 3. 🛰️ 天宮空間站 — 防穿模高保真對接機構
   // =======================================================
   const station = new THREE.Group();
 
   const matMLI = new THREE.MeshStandardMaterial({ map: mliTexture, metalness: 0.4, roughness: 0.45, color: 0xf2f4f8 });
   const matWhite = new THREE.MeshStandardMaterial({ color: 0xf0f4f8, metalness: 0.4, roughness: 0.3 });
   const matGold = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.18 });
-  const matDarkMetal = new THREE.MeshStandardMaterial({ color: 0x222830, metalness: 0.85, roughness: 0.25 });
+  const matDarkMetal = new THREE.MeshStandardMaterial({ color: 0x181e24, metalness: 0.9, roughness: 0.2 });
   const matGrey = new THREE.MeshStandardMaterial({ color: 0x5a6b7c, metalness: 0.7, roughness: 0.3 });
   const matSolar = new THREE.MeshStandardMaterial({ color: 0x021838, metalness: 0.95, roughness: 0.05, emissive: 0x001133, emissiveIntensity: 0.2 });
 
   // -------------------------------------------------------
-  // 3.1 核心艙與節點艙
+  // 3.1 核心艙（後移放置，避免相機貼近時撞擊球體）
   // -------------------------------------------------------
   const coreGroup = new THREE.Group();
 
-  // 金色球形節點艙 (Z = -3.0)
-  const nodeSphere = addEdgeGlow(new THREE.Mesh(new THREE.SphereGeometry(1.4, 32, 32), matGold), 0xffaa00, 0.3);
-  nodeSphere.position.set(0, 0, -3.0);
-  coreGroup.add(nodeSphere);
-
-  // 🚀 關鍵重構：航太級對接機構 (Docking Port Mechanism)
+  // 🚀 航太級對接口實體：置於 Z = 0 原點位置
   const dockGroup = new THREE.Group();
-  dockGroup.position.set(0, 0, -4.4); // 突出於節點艙前端
+  dockGroup.position.set(0, 0, 0);
 
-  // 1. 外金屬固定環
-  const outerRing = addEdgeGlow(new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.06, 16, 32), matDarkMetal), 0x00ffaa, 0.4);
+  // 1. 外部金屬密封環
+  const outerRing = addEdgeGlow(new THREE.Mesh(new THREE.TorusGeometry(0.65, 0.05, 16, 32), matDarkMetal), 0x00ffaa, 0.4);
   dockGroup.add(outerRing);
 
-  // 2. 內凹對接隧道暗腔 (Tunnel Depth)
-  const tunnel = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.8, 32, 1, true), matDarkMetal);
+  // 2. 內部對接暗腔（向後凹進）
+  const tunnel = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.8, 32, 1, true), matDarkMetal);
   tunnel.rotation.x = Math.PI / 2;
-  tunnel.position.z = 0.4;
+  tunnel.position.z = -0.4;
   dockGroup.add(tunnel);
+
+  // 腔底密封艙門
+  const hatch = new THREE.Mesh(new THREE.CircleGeometry(0.58, 32), matGrey);
+  hatch.position.z = -0.8;
+  dockGroup.add(hatch);
 
   // 3. 異體周邊對接導向爪 x3 (120度對稱排列)
   for (let i = 0; i < 3; i++) {
     const angle = (i * Math.PI * 2) / 3;
-    const petal = addEdgeGlow(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.28, 0.35), matGrey));
-    petal.position.set(Math.cos(angle) * 0.65, Math.sin(angle) * 0.65, -0.15);
+    const petal = addEdgeGlow(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.24, 0.3), matGrey));
+    petal.position.set(Math.cos(angle) * 0.6, Math.sin(angle) * 0.6, 0.12);
     petal.rotation.z = angle + Math.PI / 2;
-    petal.rotation.x = -0.3; // 向內微傾斜導向角
+    petal.rotation.x = -0.35;
     dockGroup.add(petal);
   }
 
-  // 4. 瞄準十字標記靶 (CBARS Crosshairs inside port)
+  // 4. 光學對接十字標記靶 (CBARS Crosshairs)
   const crossMat = new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.85 });
-  const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.015, 0.01), crossMat);
+  const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.015, 0.01), crossMat);
   crossH.position.set(0, 0, -0.05);
-  const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.65, 0.01), crossMat);
+  const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.55, 0.01), crossMat);
   crossV.position.set(0, 0, -0.05);
-  const centerDot = new THREE.Mesh(new THREE.RingGeometry(0.08, 0.12, 16), crossMat);
+  const centerDot = new THREE.Mesh(new THREE.RingGeometry(0.06, 0.1, 16), crossMat);
   centerDot.position.set(0, 0, -0.04);
   dockGroup.add(crossH, crossV, centerDot);
 
-  // 5. 綠色全息對接光環 (Target Indicator)
-  const targetRing = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.025, 16, 32), new THREE.MeshBasicMaterial({ color: 0x00ff88 }));
-  targetRing.position.set(0, 0, -0.08);
+  // 5. 綠色全息對接光環
+  const targetRing = new THREE.Mesh(new THREE.TorusGeometry(0.68, 0.02, 16, 32), new THREE.MeshBasicMaterial({ color: 0x00ff88 }));
+  targetRing.position.set(0, 0, 0.02);
   dockGroup.add(targetRing);
 
   coreGroup.add(dockGroup);
 
-  // 小柱段 (Z = -0.5)
+  // 金色球形節點艙 (後移至 Z = -1.8)
+  const nodeSphere = addEdgeGlow(new THREE.Mesh(new THREE.SphereGeometry(1.3, 32, 32), matGold), 0xffaa00, 0.3);
+  nodeSphere.position.set(0, 0, -1.8);
+  coreGroup.add(nodeSphere);
+
+  // 小柱段 (Z = -4.5)
   const smallSection = addEdgeGlow(new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 3.6, 32), matWhite));
   smallSection.rotation.x = Math.PI / 2;
-  smallSection.position.set(0, 0, -0.5);
+  smallSection.position.set(0, 0, -4.5);
   coreGroup.add(smallSection);
 
-  // 大柱段 (Z = 4.2)
+  // 大柱段 (Z = -9.2)
   const bigSection = addEdgeGlow(new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.1, 6.0, 32), matMLI));
   bigSection.rotation.x = Math.PI / 2;
-  bigSection.position.set(0, 0, 4.2);
+  bigSection.position.set(0, 0, -9.2);
   coreGroup.add(bigSection);
 
   station.add(coreGroup);
 
   // -------------------------------------------------------
-  // 3.2 問天 & 夢天實驗艙
+  // 3.2 問天 & 夢天實驗艙 (Z = -5.0)
   // -------------------------------------------------------
   function createLabModule(xPos) {
     const labGroup = new THREE.Group();
@@ -360,7 +366,7 @@ export function setupStationScene() {
     rad.position.set((xPos > 0 ? 2.5 : -2.5), 0, 0);
     labGroup.add(rad);
 
-    labGroup.position.set(xPos, 0, -1.0);
+    labGroup.position.set(xPos, 0, -5.0);
     return labGroup;
   }
 
@@ -388,7 +394,7 @@ export function setupStationScene() {
     truss.position.x = xPos > 0 ? 1.5 : -1.5;
     group.add(truss);
 
-    group.position.set(xPos, 0, -1.0);
+    group.position.set(xPos, 0, -5.0);
     group.rotation.y = yRot;
     wings.push(group);
     return group;
@@ -402,14 +408,14 @@ export function setupStationScene() {
   // -------------------------------------------------------
   const dish = addEdgeGlow(new THREE.Mesh(new THREE.SphereGeometry(1.0, 16, 16, 0, Math.PI*2, 0, Math.PI/2.8), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.1, side: THREE.DoubleSide })));
   dish.rotation.x = -Math.PI / 3;
-  dish.position.set(-2.5, 2.2, 2.5);
+  dish.position.set(-2.5, 2.2, -2.0);
   station.add(dish);
 
   const matRed = new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff0000, emissiveIntensity: 1.5 });
   const matBlue = new THREE.MeshStandardMaterial({ color: 0x0066ff, emissive: 0x0044ff, emissiveIntensity: 1.5 });
-  const beacon1 = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), matRed); beacon1.position.set(-26.5, 0.8, -1.0);
-  const beacon2 = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), matBlue); beacon2.position.set(26.5, 0.8, -1.0);
-  const beacon3 = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), matRed); beacon3.position.set(0, 2.4, -3.0);
+  const beacon1 = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), matRed); beacon1.position.set(-26.5, 0.8, -5.0);
+  const beacon2 = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), matBlue); beacon2.position.set(26.5, 0.8, -5.0);
+  const beacon3 = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), matRed); beacon3.position.set(0, 2.4, -1.8);
   const beacons = [beacon1, beacon2, beacon3];
   station.add(beacon1, beacon2, beacon3);
 
@@ -443,7 +449,7 @@ export function setupStationScene() {
     renderer,
     scene,
     camera,
-    targetRingPos: new THREE.Vector3(0, 0, -4.5), // 🚀 精確鎖定在對接口外圈表面
+    targetRingPos: new THREE.Vector3(0, 0, 0), // 🚀 對接目標錨點精確設於 (0, 0, 0)
     earthShaderMat,
     clouds,
     clouds2,
