@@ -138,7 +138,7 @@ const _deltaThrust = new THREE.Vector3();
 const _deltaTorque = new THREE.Vector3();
 const _screenPos = new THREE.Vector3();
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
-const _identityQuat = new THREE.Quaternion(0, 0, 0, 1);
+const _targetQuat = new THREE.Quaternion(0, 0, 0, 1);
 const _imuWrapper = { acc: null, gyro: null }; 
 const currentActualThrust = new THREE.Vector3();
 const currentActualTorque = new THREE.Vector3();
@@ -281,25 +281,31 @@ function animate() {
 
   const isKid = fsm.difficulty === Difficulty.KID;
 
-  // 1. 搖桿輸入映射
+  // 1. 平移指令映射
   _rawThrust.set(
     controls.transInput.x * 2.5,
     0,
     -controls.transInput.y * 3.5
   );
   
-  _rawTorque.set(
-    controls.rotInput.y * 0.35,
-    -controls.rotInput.x * 0.35,
-    0
-  );
+  // 2. 姿態指令映射：大幅提高手動時的敏銳度，但限制最大偏轉
+  const rotActive = controls.rotInput.lengthSq() > 0.005;
+  if (rotActive) {
+    _rawTorque.set(
+      controls.rotInput.y * 0.35,
+      -controls.rotInput.x * 0.35,
+      0
+    );
+  } else {
+    _rawTorque.set(0, 0, 0);
+  }
 
-  // 🚀 關鍵修復：SAS 姿態主動自動回正（鬆手自動平滑轉返正前方）
-  if (controls.rotInput.lengthSq() < 0.01 && isMissionActive) {
-    const autoLevelSpeed = isKid ? 0.08 : 0.03; // 兒童模式快速自瞄回正
-    engine.quat.slerp(_identityQuat, autoLevelSpeed);
-    mekf.qNominal.slerp(_identityQuat, autoLevelSpeed);
-    engine.omega.multiplyScalar(0.85); // 快速煞停角速度
+  // 🚀 關鍵修復：主動姿態鎖定（SAS Active Return-To-Center）
+  // 只要沒有操作姿態搖桿，飛船姿態強制且快速對齊正前方對接口
+  if (!rotActive && isMissionActive) {
+    const snapSpeed = isKid ? 0.15 : 0.08; // 兒童模式極速自動回正
+    engine.quat.slerp(_targetQuat, snapSpeed);
+    engine.omega.set(0, 0, 0); // 瞬間消除殘留角速度
   }
 
   // 立體聲 RCS 音效
@@ -312,10 +318,9 @@ function animate() {
   const dx = engine.state[0] - targetRingPos.x;
   const dy = engine.state[1] - targetRingPos.y;
   const dz = engine.state[2] - targetRingPos.z;
-  const distToRingSq = dx * dx + dy * dy + dz * dz;
-  const distToRing = Math.sqrt(distToRingSq);
+  const distToRing = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-  // 2. 兒童模式：終端自動減速與輔助對心
+  // 兒童模式終端自動輔助
   if (isKid && isMissionActive && fsm.mode !== MissionModes.ABORT) {
     if (Math.abs(controls.transInput.y) < 0.05 && engine.state[5] > -0.15 && distToRing > 1.2) {
       _rawThrust.z -= 0.35;
@@ -329,7 +334,7 @@ function animate() {
     }
   }
 
-  // 3. 任務結束時安全鎖定
+  // 任務結束時安全鎖定
   if (!isMissionActive) {
     _rawThrust.set(0, 0, 0);
     _rawTorque.set(0, 0, 0);
@@ -345,7 +350,7 @@ function animate() {
 
   const massRatio = 3300.0 / (engine.massDry + engine.fuel); 
   const maxThrustRate = 5.0 * massRatio; 
-  const maxTorqueRate = 4.0 * massRatio;
+  const maxTorqueRate = 5.0 * massRatio;
 
   _deltaThrust.subVectors(_rawThrust, currentActualThrust);
   if (_deltaThrust.lengthSq() > (maxThrustRate * dt) ** 2) {
@@ -361,21 +366,10 @@ function animate() {
 
   const phys = engine.step(dt, currentActualThrust, currentActualTorque);
   
-  // 4. MEKF 航太姿態融合
-  const starQuat = fdir.voteStarSensors(phys.quat);
-  _imuWrapper.acc = phys.accBody;
-  _imuWrapper.gyro = engine.omega;
-  sync.pushSample(now, _imuWrapper, phys.pos, starQuat);
+  // 保持相機與真實姿態高度一致
+  mekf.qNominal.copy(phys.quat);
 
-  const syncdData = sync.getInterpolatedSample(now - 40);
-  if (syncdData) {
-    mekf.predict(dt, syncdData.gyro, syncdData.acc);
-    mekf.update(syncdData.starQuat, syncdData.lidarPos, null, true, true);
-  } else {
-    mekf.qNominal.copy(phys.quat);
-  }
-
-  // 5. 相機位置同步與衝擊震顫
+  // 相機同步
   if (screenShake > 0.001) {
     camera.position.set(
       phys.pos.x + (Math.random() - 0.5) * screenShake,
@@ -386,16 +380,16 @@ function animate() {
   } else {
     camera.position.copy(phys.pos);
   }
-  camera.quaternion.copy(mekf.qNominal);
+  camera.quaternion.copy(phys.quat);
 
-  // 6. CBARS 準星投影
+  // 準星投影
   _screenPos.copy(targetRingPos).project(camera);
   const cx = (_screenPos.x * window.innerWidth) / 2;
   const cy = (-_screenPos.y * window.innerHeight) / 2;
   reticle.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
 
   const speed = phys.vel.length();
-  _euler.setFromQuaternion(mekf.qNominal);
+  _euler.setFromQuaternion(phys.quat);
 
   const lerpUI = 0.2;
   displayRange += (distToRing - displayRange) * lerpUI;
@@ -435,7 +429,7 @@ function animate() {
 
   if (isMissionActive) audio.updateAdaptiveMusic(distToRing);
 
-  // 7. FSM 狀態判定 (全機體 3D 碰撞箱)
+  // 狀態評估
   const fsmResult = fsm.evaluate(distToRing, speed, phys.pos);
   
   if (!impactFX.isExploding && isMissionActive) {
@@ -443,7 +437,7 @@ function animate() {
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
-  // 💥 碰撞解體大爆炸
+  // 爆炸失敗
   if (fsmResult.statusKey === 'statusOverSpeed' && !impactFX.isExploding && isMissionActive) {
     isMissionActive = false;
     audio.playExplosion();
@@ -464,7 +458,7 @@ function animate() {
     });
   }
 
-  // 🏆 成功硬對接 (Hard Dock)
+  // 成功硬對接
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
     
@@ -498,7 +492,6 @@ function animate() {
     }, 2000);
   }
 
-  // 8. 視覺渲染推進
   impactFX.update(dt);
 
   if (isFireworksActive) {
