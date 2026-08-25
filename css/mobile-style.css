@@ -1,26 +1,67 @@
+/* css/mobile-style.css */
 * { box-sizing: border-box; touch-action: none; -webkit-user-select: none; user-select: none; }
-html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; color: #fff; }
+html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; color: #00ffaa; }
+
 #webgl-canvas { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
 
-#hud-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 12px; }
+/* CRT 電子掃描線遮罩 */
+body::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  z-index: 5;
+  background-size: 100% 3px, 3px 100%;
+  pointer-events: none;
+}
+
+#hud-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 16px; }
 .interactive { pointer-events: auto; }
 
-.header-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.telemetry-card { background: rgba(5, 15, 30, 0.85); border: 1px solid rgba(0, 200, 255, 0.5); border-radius: 6px; padding: 8px 12px; font-size: 11px; line-height: 1.4; backdrop-filter: blur(4px); }
-.telemetry-card .highlight { color: #00ffcc; font-weight: bold; }
-.telemetry-card .alert { color: #ff3344; font-weight: bold; }
+/* 頂部主飛行儀表（放大關鍵數據） */
+.flight-director {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
 
-.btn-group { display: flex; flex-direction: column; gap: 6px; }
-.hud-btn { background: rgba(0, 200, 255, 0.15); border: 1px solid #00c8ff; color: #fff; border-radius: 4px; padding: 6px 10px; font-size: 11px; font-weight: bold; cursor: pointer; text-align: center; }
-.hud-btn:active { background: rgba(0, 200, 255, 0.4); }
-.btn-abort { border-color: #ff3344; color: #ff3344; background: rgba(255, 50, 50, 0.15); }
-.btn-abort:active { background: rgba(255, 50, 50, 0.4); }
+.primary-telemetry {
+  background: rgba(0, 20, 15, 0.85);
+  border: 1px solid #00ffaa;
+  box-shadow: 0 0 10px rgba(0, 255, 170, 0.2);
+  border-radius: 4px;
+  padding: 10px 14px;
+}
 
-#crosshair-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; pointer-events: none; }
-.crosshair-circle { width: 100%; height: 100%; border: 1px dashed rgba(0, 255, 150, 0.4); border-radius: 50%; }
-.crosshair-reticle { position: absolute; top: 50%; left: 50%; width: 12px; height: 12px; border: 2px solid #00ff66; transform: translate(-50%, -50%); }
+.pri-data-row { font-size: 18px; font-weight: bold; letter-spacing: 1px; color: #fff; text-shadow: 0 0 6px #00ffaa; margin-bottom: 4px; }
+.sec-data-row { font-size: 11px; opacity: 0.8; color: #00ffaa; }
 
-.joystick-container { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 10px; }
-.stick-zone { width: 110px; height: 110px; background: rgba(255, 255, 255, 0.05); border: 2px dashed rgba(0, 200, 255, 0.3); border-radius: 50%; position: relative; display: flex; justify-content: center; align-items: center; }
-.stick-knob { width: 44px; height: 44px; background: rgba(0, 200, 255, 0.5); border: 2px solid #fff; border-radius: 50%; position: absolute; transform: translate(0px, 0px); }
-.stick-label { position: absolute; top: -20px; font-size: 10px; color: #00c8ff; font-weight: bold; text-transform: uppercase; }
+/* 模式與按鈕 */
+.btn-group { display: flex; flex-direction: column; gap: 8px; }
+.hud-btn {
+  background: rgba(0, 30, 20, 0.6);
+  border: 1px solid #00ffaa;
+  color: #00ffaa;
+  border-radius: 3px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(0, 255, 170, 0.2);
+}
+.hud-btn:active { background: #00ffaa; color: #000; }
+.btn-abort { border-color: #ff3344; color: #ff3344; box-shadow: 0 0 5px rgba(255, 50, 50, 0.3); }
+.btn-abort:active { background: #ff3344; color: #000; }
+
+/* CBARS 瞄準十字 */
+#crosshair-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100px; height: 100px; pointer-events: none; }
+.crosshair-circle { width: 100%; height: 100%; border: 1px dashed rgba(0, 255, 170, 0.5); border-radius: 50%; }
+.crosshair-reticle { position: absolute; top: 50%; left: 50%; width: 14px; height: 14px; border: 2px solid #00ff88; transform: translate(-50%, -50%); box-shadow: 0 0 8px #00ff88; }
+
+/* 底部虛擬搖桿 */
+.joystick-container { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 8px; }
+.stick-zone { width: 115px; height: 115px; background: rgba(0, 20, 15, 0.4); border: 1px dashed rgba(0, 255, 170, 0.4); border-radius: 50%; position: relative; display: flex; justify-content: center; align-items: center; }
+.stick-knob { width: 44px; height: 44px; background: rgba(0, 255, 170, 0.2); border: 2px solid #00ffaa; border-radius: 50%; position: absolute; transform: translate(0px, 0px); box-shadow: 0 0 8px rgba(0, 255, 170, 0.4); }
+.stick-label { position: absolute; top: -20px; font-size: 10px; color: #00ffaa; font-weight: bold; letter-spacing: 1px; }
