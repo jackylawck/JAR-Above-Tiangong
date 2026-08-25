@@ -10,17 +10,18 @@ export class SpacecraftEngine {
     this.g0 = 9.80665;
     this.meanMotion = 0.00113;
 
-    // 🚀 標準視線座標：飛船在 Z = 35 米處，朝向 -Z 軸進近
+    // 初始位置與速度
     this.state = new Float64Array([0, 0, 35.0, 0, 0, -0.25]);
-    this.omega = new THREE.Vector3(0, 0, 0);
-    this.quat = new THREE.Quaternion();
-    this.moi = new THREE.Vector3(2500, 2500, 1800);
+    this.omega = new THREE.Vector3(0, 0, 0); // 角速度 (rad/s)
+    this.quat = new THREE.Quaternion(0, 0, 0, 1);
+    this.moi = new THREE.Vector3(800, 800, 600); // 調低轉動慣量，提升靈敏度
     this.accBody = new THREE.Vector3();
   }
 
   step(dt, thrustCmd, torqueCmd) {
     const totalMass = this.massDry + this.fuel;
     
+    // 平移推力
     const appliedThrust = thrustCmd.clone().multiplyScalar(this.thrustMultiplier * 200.0);
     const thrustMag = appliedThrust.length();
     
@@ -40,7 +41,7 @@ export class SpacecraftEngine {
     const ay = thrustWorld.y / totalMass;
     const az = thrustWorld.z / totalMass;
 
-    // 經典相對運動微分方程 (Z 軸為視線方向)
+    // CW 軌道微分方程步進
     const xDotDot = 2 * n * vz + 3 * n * n * x + ax;
     const yDotDot = -n * n * y + ay;
     const zDotDot = -2 * n * vx + az;
@@ -53,20 +54,26 @@ export class SpacecraftEngine {
     this.state[1] += this.state[4] * dt;
     this.state[2] += this.state[5] * dt;
 
-    // 姿態阻尼
-    const appliedTorque = torqueCmd.clone().multiplyScalar(80.0);
+    // 姿態步進：提升 RCS 力矩響應
+    const appliedTorque = torqueCmd.clone().multiplyScalar(280.0);
     this.omega.x += (appliedTorque.x / this.moi.x) * dt;
     this.omega.y += (appliedTorque.y / this.moi.y) * dt;
     this.omega.z += (appliedTorque.z / this.moi.z) * dt;
-    this.omega.multiplyScalar(0.95);
 
-    const deltaQ = new THREE.Quaternion(
-      this.omega.x * dt * 0.5,
-      this.omega.y * dt * 0.5,
-      this.omega.z * dt * 0.5,
+    // 阻尼回饋：無操作時平穩減速
+    if (torqueCmd.lengthSq() === 0) {
+      this.omega.multiplyScalar(0.92);
+    }
+
+    // 四元數運動學積分
+    const halfDt = dt * 0.5;
+    const dq = new THREE.Quaternion(
+      this.omega.x * halfDt,
+      this.omega.y * halfDt,
+      this.omega.z * halfDt,
       1.0
     ).normalize();
-    this.quat.multiply(deltaQ).normalize();
+    this.quat.multiply(dq).normalize();
 
     return {
       pos: new THREE.Vector3(this.state[0], this.state[1], this.state[2]),
