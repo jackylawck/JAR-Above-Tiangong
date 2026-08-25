@@ -11,6 +11,16 @@ export const Difficulty = {
   SCIENTIST: 'SCIENTIST'
 };
 
+// ==========================================
+// 極致優化：預先配置所有可能的狀態回傳物件 (Zero Allocation)
+// ==========================================
+const FSM_RESULTS = {
+  ABORT:      { statusKey: 'statusAbort',     isAlert: true,  isSuccess: false, isNominal: false },
+  DOCKED:     { statusKey: 'statusDocked',    isAlert: false, isSuccess: true,  isNominal: false },
+  OVER_SPEED: { statusKey: 'statusOverSpeed', isAlert: true,  isSuccess: false, isNominal: false },
+  APPROACH:   { statusKey: 'statusApproach',  isAlert: false, isSuccess: false, isNominal: true  }
+};
+
 export class MissionFSM {
   constructor() {
     this.mode = MissionModes.AUTO;
@@ -51,17 +61,18 @@ export class MissionFSM {
   }
 
   evaluate(dist, speed) {
+    // 直接回傳靜態物件參照，不產生任何記憶體垃圾
     if (this.mode === MissionModes.ABORT) {
-      return { statusKey: 'statusAbort', isAlert: true };
+      return FSM_RESULTS.ABORT;
     }
 
     if (dist < this.dockingThreshold) {
       if (speed <= this.rateLimit) {
-        return { statusKey: 'statusDocked', isSuccess: true };
+        return FSM_RESULTS.DOCKED;
       } else {
-        return { statusKey: 'statusOverSpeed', isAlert: true };
+        return FSM_RESULTS.OVER_SPEED;
       }
     }
-    return { statusKey: 'statusApproach', isNominal: true };
+    return FSM_RESULTS.APPROACH;
   }
 }
