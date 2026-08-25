@@ -6,24 +6,25 @@ export class DualTouchControls {
     this.transInput = new THREE.Vector2(0, 0); // 平移 (X, Y)
     this.rotInput = new THREE.Vector2(0, 0);   // 姿態 (Pitch, Yaw)
     
+    this.isTransActive = false;
+    this.isRotActive = false;
+
     this.zoneTrans = document.getElementById('zone-trans');
     this.knobTrans = document.getElementById('knob-trans');
     this.zoneRot = document.getElementById('zone-rot');
     this.knobRot = document.getElementById('knob-rot');
 
     this.maxRadius = 38;
-    this.deadzone = 0.08; // 8% 中心死區，過濾手指抖動
+    this.deadzone = 0.05; // 微縮死區，提升靈敏度
 
-    this.setupJoystick(this.zoneTrans, this.knobTrans, this.transInput, false);
-    this.setupJoystick(this.zoneRot, this.knobRot, this.rotInput, true);
+    this.setupTransJoystick();
+    this.setupRotJoystick();
   }
 
-  setupJoystick(zone, knob, outputVector, isAttitude) {
-    if (!zone || !knob) return;
-
+  setupTransJoystick() {
+    if (!this.zoneTrans || !this.knobTrans) return;
     let activePointerId = null;
-    let centerX = 0;
-    let centerY = 0;
+    let centerX = 0, centerY = 0;
 
     const handlePointer = (e) => {
       let dx = e.clientX - centerX;
@@ -35,59 +36,117 @@ export class DualTouchControls {
         dy = (dy / dist) * this.maxRadius;
       }
 
-      knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+      this.knobTrans.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
 
       const normDist = dist / this.maxRadius;
       if (normDist < this.deadzone) {
-        outputVector.set(0, 0);
+        this.transInput.set(0, 0);
         return;
       }
 
-      // 二次方平滑曲線：(normDist - deadzone) / (1 - deadzone)
       const factor = (normDist - this.deadzone) / (1.0 - this.deadzone);
-      const curvedIntensity = factor * factor;
-
       const dirX = dx / (dist || 1);
-      const dirY = -dy / (dist || 1); // 向上推為正 Y
+      const dirY = -dy / (dist || 1);
 
-      outputVector.x = dirX * curvedIntensity;
-      outputVector.y = dirY * curvedIntensity;
+      this.transInput.x = dirX * factor;
+      this.transInput.y = dirY * factor;
     };
 
-    zone.addEventListener('pointerdown', (e) => {
+    this.zoneTrans.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      e.stopPropagation();
       activePointerId = e.pointerId;
-      
-      // 按下時快取中心點，消除 move 時的 getBoundingClientRect 重排開銷
-      const rect = zone.getBoundingClientRect();
+      this.isTransActive = true;
+      const rect = this.zoneTrans.getBoundingClientRect();
       centerX = rect.left + rect.width / 2;
       centerY = rect.top + rect.height / 2;
-
-      zone.setPointerCapture(e.pointerId);
+      this.zoneTrans.setPointerCapture(e.pointerId);
       handlePointer(e);
     });
 
-    zone.addEventListener('pointermove', (e) => {
+    this.zoneTrans.addEventListener('pointermove', (e) => {
       if (e.pointerId === activePointerId) {
         e.preventDefault();
-        e.stopPropagation();
         handlePointer(e);
       }
     });
 
-    const resetJoystick = (e) => {
+    const reset = (e) => {
       if (e.pointerId === activePointerId) {
         e.preventDefault();
-        e.stopPropagation();
         activePointerId = null;
-        outputVector.set(0, 0);
-        knob.style.transform = 'translate(-50%, -50%)';
-        try { zone.releasePointerCapture(e.pointerId); } catch (_) {}
+        this.isTransActive = false;
+        this.transInput.set(0, 0);
+        this.knobTrans.style.transform = 'translate(-50%, -50%)';
+        try { this.zoneTrans.releasePointerCapture(e.pointerId); } catch (_) {}
       }
     };
 
-    zone.addEventListener('pointerup', resetJoystick);
-    zone.addEventListener('pointercancel', resetJoystick);
+    this.zoneTrans.addEventListener('pointerup', reset);
+    this.zoneTrans.addEventListener('pointercancel', reset);
+  }
+
+  setupRotJoystick() {
+    if (!this.zoneRot || !this.knobRot) return;
+    let activePointerId = null;
+    let centerX = 0, centerY = 0;
+
+    const handlePointer = (e) => {
+      let dx = e.clientX - centerX;
+      let dy = e.clientY - centerY;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist > this.maxRadius) {
+        dx = (dx / dist) * this.maxRadius;
+        dy = (dy / dist) * this.maxRadius;
+      }
+
+      this.knobRot.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+
+      const normDist = dist / this.maxRadius;
+      if (normDist < this.deadzone) {
+        this.rotInput.set(0, 0);
+        return;
+      }
+
+      const factor = (normDist - this.deadzone) / (1.0 - this.deadzone);
+      const dirX = dx / (dist || 1);
+      const dirY = -dy / (dist || 1);
+
+      // 🚀 線性靈敏輸出
+      this.rotInput.x = dirX * factor;
+      this.rotInput.y = dirY * factor;
+    };
+
+    this.zoneRot.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      activePointerId = e.pointerId;
+      this.isRotActive = true; // 標記正在觸控姿態
+      const rect = this.zoneRot.getBoundingClientRect();
+      centerX = rect.left + rect.width / 2;
+      centerY = rect.top + rect.height / 2;
+      this.zoneRot.setPointerCapture(e.pointerId);
+      handlePointer(e);
+    });
+
+    this.zoneRot.addEventListener('pointermove', (e) => {
+      if (e.pointerId === activePointerId) {
+        e.preventDefault();
+        handlePointer(e);
+      }
+    });
+
+    const reset = (e) => {
+      if (e.pointerId === activePointerId) {
+        e.preventDefault();
+        activePointerId = null;
+        this.isRotActive = false; // 標記已放手
+        this.rotInput.set(0, 0);
+        this.knobRot.style.transform = 'translate(-50%, -50%)';
+        try { this.zoneRot.releasePointerCapture(e.pointerId); } catch (_) {}
+      }
+    };
+
+    this.zoneRot.addEventListener('pointerup', reset);
+    this.zoneRot.addEventListener('pointercancel', reset);
   }
 }
