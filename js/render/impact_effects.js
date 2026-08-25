@@ -6,102 +6,101 @@ export class ImpactFXManager {
     this.scene = scene;
     this.camera = camera;
     this.isExploding = false;
-    this.shakeIntensity = 0;
-
-    // 120 條高溫金屬拉絲線段 (共 240 個頂點)
-    this.particleCount = 120;
-    this.positions = new Float32Array(this.particleCount * 6);
+    this.explosionTimer = 0;
     
-    // ==========================================
-    // 極致優化：預先分配所有速度向量 (Zero Allocation)
-    // ==========================================
-    this.velocities = new Array(this.particleCount);
+    // 800 枚高能金屬碎片與火光粒子
+    this.particleCount = 800;
+    this.geo = new THREE.BufferGeometry();
+    this.posArray = new Float32Array(this.particleCount * 3);
+    this.velArray = new Float32Array(this.particleCount * 3);
+    this.colArray = new Float32Array(this.particleCount * 3);
+
     for (let i = 0; i < this.particleCount; i++) {
-      this.velocities[i] = new THREE.Vector3();
+      this.posArray[i*3] = 0; this.posArray[i*3+1] = 0; this.posArray[i*3+2] = 0;
+      this.velArray[i*3] = 0; this.velArray[i*3+1] = 0; this.velArray[i*3+2] = 0;
+      this.colArray[i*3] = 1.0; this.colArray[i*3+1] = 0.3; this.colArray[i*3+2] = 0.05;
     }
 
-    this.geo = new THREE.BufferGeometry();
-    this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    
-    this.mat = new THREE.LineBasicMaterial({
-      color: 0xff4411,
+    this.geo.setAttribute('position', new THREE.BufferAttribute(this.posArray, 3));
+    this.geo.setAttribute('color', new THREE.BufferAttribute(this.colArray, 3));
+
+    this.mat = new THREE.PointsMaterial({
+      size: 2.8,
+      vertexColors: true,
       transparent: true,
       opacity: 0,
-      blending: THREE.AdditiveBlending
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
     });
-    
-    this.debrisMesh = new THREE.LineSegments(this.geo, this.mat);
-    this.scene.add(this.debrisMesh);
+
+    this.particles = new THREE.Points(this.geo, this.mat);
+    this.scene.add(this.particles);
+
+    // 爆炸全螢幕閃紅光層
+    this.flashLight = new THREE.PointLight(0xff3300, 0, 80);
+    this.scene.add(this.flashLight);
   }
 
-  // 觸發結構解體與衝擊
-  triggerCatastrophicFailure(contactPos, onRebootCallback) {
-    if (this.isExploding) return;
+  triggerCatastrophicFailure(pos, callback) {
     this.isExploding = true;
-    this.shakeIntensity = 0.9;
+    this.explosionTimer = 0;
     this.mat.opacity = 1.0;
+    this.flashLight.position.copy(pos);
+    this.flashLight.intensity = 15.0;
 
-    const pos = this.geo.attributes.position.array;
+    const p = this.geo.attributes.position.array;
+    const c = this.geo.attributes.color.array;
 
     for (let i = 0; i < this.particleCount; i++) {
-      // 球形隨機散射速度 (10 ~ 25 m/s)
-      const speed = 10 + Math.random() * 15;
+      p[i*3] = pos.x;
+      p[i*3+1] = pos.y;
+      p[i*3+2] = pos.z;
+
+      const speed = 5.0 + Math.random() * 25.0;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
-      
-      // 優化 1：In-place 更新，絕不使用 new THREE.Vector3
-      this.velocities[i].set(
-        speed * Math.sin(phi) * Math.cos(theta),
-        speed * Math.sin(phi) * Math.sin(theta),
-        speed * Math.cos(phi)
-      );
 
-      // 起點與終點重合於撞擊點
-      const idx = i * 6;
-      pos[idx]     = contactPos.x; pos[idx + 1] = contactPos.y; pos[idx + 2] = contactPos.z;
-      pos[idx + 3] = contactPos.x; pos[idx + 4] = contactPos.y; pos[idx + 5] = contactPos.z;
+      this.velArray[i*3] = speed * Math.sin(phi) * Math.cos(theta);
+      this.velArray[i*3+1] = speed * Math.sin(phi) * Math.sin(theta);
+      this.velArray[i*3+2] = speed * Math.cos(phi);
+
+      const r = Math.random();
+      if (r < 0.5) {
+        c[i*3] = 1.0; c[i*3+1] = 0.2; c[i*3+2] = 0.0; // 烈焰紅
+      } else if (r < 0.8) {
+        c[i*3] = 1.0; c[i*3+1] = 0.8; c[i*3+2] = 0.1; // 熾熱金
+      } else {
+        c[i*3] = 0.8; c[i*3+1] = 0.9; c[i*3+2] = 1.0; // 金屬白熾碎片
+      }
     }
     this.geo.attributes.position.needsUpdate = true;
+    this.geo.attributes.color.needsUpdate = true;
 
-    // 3.2 秒後淡出並觸發重啟
-    setTimeout(() => {
-      this.isExploding = false;
-      this.mat.opacity = 0;
-      if (onRebootCallback) onRebootCallback();
-    }, 3200);
+    if (navigator.vibrate) navigator.vibrate([300, 100, 400, 150, 500]);
+    if (callback) setTimeout(callback, 2200);
   }
 
   update(dt) {
-    // 多軸向劇烈鏡頭晃動 + 輕微 Roll 滾轉
-    if (this.shakeIntensity > 0.001) {
-      this.camera.position.x += (Math.random() - 0.5) * this.shakeIntensity;
-      this.camera.position.y += (Math.random() - 0.5) * this.shakeIntensity;
-      this.camera.rotation.z += (Math.random() - 0.5) * this.shakeIntensity * 0.05;
-      this.shakeIntensity *= 0.90; // 指數衰減
+    if (!this.isExploding) return;
+    this.explosionTimer += dt;
+
+    const p = this.geo.attributes.position.array;
+    for (let i = 0; i < this.particleCount; i++) {
+      p[i*3] += this.velArray[i*3] * dt;
+      p[i*3+1] += this.velArray[i*3+1] * dt;
+      p[i*3+2] += this.velArray[i*3+2] * dt;
+      this.velArray[i*3] *= 0.96;
+      this.velArray[i*3+1] *= 0.96;
+      this.velArray[i*3+2] *= 0.96;
     }
+    this.geo.attributes.position.needsUpdate = true;
 
-    // 拉絲破片飛行與長度動態延展
-    if (this.isExploding) {
-      const pos = this.geo.attributes.position.array;
-      for (let i = 0; i < this.particleCount; i++) {
-        const idx = i * 6;
-        const v = this.velocities[i];
+    this.mat.opacity = Math.max(0, 1.0 - this.explosionTimer / 2.0);
+    this.flashLight.intensity = Math.max(0, (1.0 - this.explosionTimer / 0.8) * 15.0);
 
-        // 終點前衝
-        pos[idx + 3] += v.x * dt;
-        pos[idx + 4] += v.y * dt;
-        pos[idx + 5] += v.z * dt;
-
-        // 起點以 0.72 倍速追隨，形成高速拉絲拖尾
-        pos[idx]     += v.x * dt * 0.72;
-        pos[idx + 1] += v.y * dt * 0.72;
-        pos[idx + 2] += v.z * dt * 0.72;
-
-        // 微小空間阻尼
-        v.multiplyScalar(0.985);
-      }
-      this.geo.attributes.position.needsUpdate = true;
-      this.mat.opacity = Math.max(0, this.mat.opacity - 0.30 * dt);
+    if (this.explosionTimer > 2.2) {
+      this.isExploding = false;
+      this.mat.opacity = 0;
     }
   }
 }
