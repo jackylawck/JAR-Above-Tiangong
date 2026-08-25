@@ -40,7 +40,7 @@ const uiFsm = document.getElementById('val-fsm');
 const uiAlt = document.getElementById('val-alt');
 const uiRpy = document.getElementById('val-rpy');
 const uiOffset = document.getElementById('val-offset');
-const uiCov = document.getElementById('val-cov');
+const uiProgress = document.getElementById('val-progress');
 const btnDiff = document.getElementById('btn-diff');
 const btnMode = document.getElementById('btn-mode');
 const btnAbort = document.getElementById('btn-abort');
@@ -53,6 +53,74 @@ let displayRange = 80.0, displaySpeed = 0.15, displayFuel = 300.0;
 let missionStartTime = 0;
 let isMissionActive = false;
 
+// ==========================================
+// 🎆 3A 特效：對接勝利煙火粒子系統 (Zero Allocation)
+// ==========================================
+const FIREWORK_COUNT = 600;
+const fwGeo = new THREE.BufferGeometry();
+const fwPos = new Float32Array(FIREWORK_COUNT * 3);
+const fwVel = new Float32Array(FIREWORK_COUNT * 3);
+const fwCol = new Float32Array(FIREWORK_COUNT * 3);
+
+for (let i = 0; i < FIREWORK_COUNT; i++) {
+  fwPos[i * 3] = 0; fwPos[i * 3 + 1] = 0; fwPos[i * 3 + 2] = 0;
+  fwVel[i * 3] = 0; fwVel[i * 3 + 1] = 0; fwVel[i * 3 + 2] = 0;
+  fwCol[i * 3] = 1.0; fwCol[i * 3 + 1] = 0.8; fwCol[i * 3 + 2] = 0.2;
+}
+
+fwGeo.setAttribute('position', new THREE.BufferAttribute(fwPos, 3));
+fwGeo.setAttribute('color', new THREE.BufferAttribute(fwCol, 3));
+const fwMat = new THREE.PointsMaterial({
+  size: 2.2,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const fireworkParticles = new THREE.Points(fwGeo, fwMat);
+scene.add(fireworkParticles);
+
+let isFireworksActive = false;
+let fireworkTimer = 0;
+let screenShake = 0;
+
+function triggerSuccessFireworks(dockPos) {
+  isFireworksActive = true;
+  fireworkTimer = 0;
+  fwMat.opacity = 1.0;
+  screenShake = 0.25; // 激發鏡頭震顫
+
+  const posAttr = fwGeo.attributes.position.array;
+  const colAttr = fwGeo.attributes.color.array;
+
+  for (let i = 0; i < FIREWORK_COUNT; i++) {
+    posAttr[i * 3] = dockPos.x;
+    posAttr[i * 3 + 1] = dockPos.y;
+    posAttr[i * 3 + 2] = dockPos.z;
+
+    const speed = 4.0 + Math.random() * 12.0;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+
+    fwVel[i * 3] = speed * Math.sin(phi) * Math.cos(theta);
+    fwVel[i * 3 + 1] = speed * Math.sin(phi) * Math.sin(theta);
+    fwVel[i * 3 + 2] = speed * Math.cos(phi);
+
+    // 金黃、翠綠、亮青三色煙火
+    const pType = Math.random();
+    if (pType < 0.33) {
+      colAttr[i * 3] = 1.0; colAttr[i * 3 + 1] = 0.85; colAttr[i * 3 + 2] = 0.1;
+    } else if (pType < 0.66) {
+      colAttr[i * 3] = 0.0; colAttr[i * 3 + 1] = 1.0; colAttr[i * 3 + 2] = 0.55;
+    } else {
+      colAttr[i * 3] = 0.0; colAttr[i * 3 + 1] = 0.8; colAttr[i * 3 + 2] = 1.0;
+    }
+  }
+  fwGeo.attributes.position.needsUpdate = true;
+  fwGeo.attributes.color.needsUpdate = true;
+}
+
 // 預先分配變數 (Zero Allocation)
 const _rawThrust = new THREE.Vector3();
 const _rawTorque = new THREE.Vector3();
@@ -64,7 +132,7 @@ const _imuWrapper = { acc: null, gyro: null };
 let currentActualThrust = new THREE.Vector3();
 let currentActualTorque = new THREE.Vector3();
 
-// 敘事引擎與任務管理
+// 敘事引擎
 let typeWriterTimeout = null;
 let typeWriterTick = null;
 let currentNarrativeKey = null;
@@ -105,6 +173,8 @@ function startNewMission() {
   
   missionStartTime = performance.now();
   isMissionActive = true;
+  isFireworksActive = false;
+  fwMat.opacity = 0;
   if(missionReport) missionReport.classList.add('hidden');
   
   if (fsm.difficulty === Difficulty.KID) {
@@ -138,7 +208,7 @@ btnDiff.onclick = () => {
     btnDiff.style.borderColor = '#00ffaa';
     btnDiff.style.color = '#00ffaa';
     btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
-    engine.thrustMultiplier = 4.0; // 兒童模式：4 倍平移加速度
+    engine.thrustMultiplier = 4.0;
   } else if (currentDiff === Difficulty.SCIENTIST) {
     btnDiff.style.borderColor = '#ff3344';
     btnDiff.style.color = '#ff3344';
@@ -247,7 +317,17 @@ function animate() {
     mekf.update(syncdData.starQuat, syncdData.lidarPos, null, true, true);
   }
 
-  camera.position.copy(phys.pos);
+  // 鏡頭抖動 (Shake) 特效
+  if (screenShake > 0.001) {
+    camera.position.set(
+      phys.pos.x + (Math.random() - 0.5) * screenShake,
+      phys.pos.y + (Math.random() - 0.5) * screenShake,
+      phys.pos.z + (Math.random() - 0.5) * screenShake
+    );
+    screenShake *= 0.92;
+  } else {
+    camera.position.copy(phys.pos);
+  }
   camera.quaternion.copy(mekf.qNominal);
 
   _screenPos.copy(targetRingPos).project(camera);
@@ -270,7 +350,32 @@ function animate() {
   uiAlt.textContent = (400 + (phys.pos.y + 80) / 1000).toFixed(1);
   uiRpy.textContent = `${THREE.MathUtils.radToDeg(_euler.x).toFixed(1)}/${THREE.MathUtils.radToDeg(_euler.y).toFixed(1)}/${THREE.MathUtils.radToDeg(_euler.z).toFixed(1)}`;
   uiOffset.textContent = Math.hypot(phys.pos.x, phys.pos.z).toFixed(2);
-  uiCov.textContent = (mekf.P[0][0] + mekf.P[4][4]).toFixed(4);
+
+  // 3A 進度計算
+  const progressVal = Math.min(100, Math.max(0, (1.0 - (dist - 1.5) / 78.5) * 100));
+  uiProgress.textContent = `${progressVal.toFixed(0)}%`;
+
+  // 3A 視覺色彩漸變反饋
+  if (dist < 6.0) {
+    uiRange.style.color = '#00ffaa';
+    uiRange.style.textShadow = '0 0 12px #00ffaa';
+  } else if (dist < 20.0) {
+    uiRange.style.color = '#ffaa00';
+    uiRange.style.textShadow = '0 0 8px #ffaa00';
+  } else {
+    uiRange.style.color = '#ffffff';
+    uiRange.style.textShadow = 'none';
+  }
+
+  // 速度超限呼吸燈提示
+  if (speed > fsm.maxSafeApproachSpeed && dist < 20.0) {
+    uiRate.style.color = '#ff3355';
+    const glow = 8 + Math.sin(now / 150) * 6;
+    uiRate.style.textShadow = `0 0 ${glow}px #ff3355`;
+  } else {
+    uiRate.style.color = '#ffffff';
+    uiRate.style.textShadow = 'none';
+  }
 
   if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(dist);
 
@@ -301,12 +406,15 @@ function animate() {
     });
   }
 
-  // 成功結算
+  // 成功硬對接觸發勝利煙火
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
     if(typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
     playNarrative('narrSuccess', 5000);
     
+    // 激發煙火特效
+    triggerSuccessFireworks(phys.pos);
+
     setTimeout(() => {
       const timeTaken = ((performance.now() - missionStartTime) / 1000).toFixed(1);
       const fuelLeft = phys.fuel.toFixed(1);
@@ -325,37 +433,42 @@ function animate() {
         document.getElementById('score-error').textContent = errAngle;
         missionReport.classList.remove('hidden');
       }
-    }, 2000);
+    }, 2500);
   }
 
-  // ==========================================
-  // 動態視覺驅動 (Zero Allocation)
-  // ==========================================
+  // 煙火粒子步進
+  if (isFireworksActive) {
+    fireworkTimer += dt;
+    const pos = fwGeo.attributes.position.array;
+    for (let i = 0; i < FIREWORK_COUNT; i++) {
+      pos[i * 3] += fwVel[i * 3] * dt;
+      pos[i * 3 + 1] += fwVel[i * 3 + 1] * dt;
+      pos[i * 3 + 2] += fwVel[i * 3 + 2] * dt;
+      fwVel[i * 3] *= 0.96;
+      fwVel[i * 3 + 1] *= 0.96;
+      fwVel[i * 3 + 2] *= 0.96;
+    }
+    fwGeo.attributes.position.needsUpdate = true;
+    fwMat.opacity = Math.max(0, 1.0 - fireworkTimer / 2.5);
+    if (fireworkTimer > 2.5) isFireworksActive = false;
+  }
 
-  // 雙層雲視差動態
+  // 動態環境
   if (clouds) clouds.rotation.y += dt * 0.003;
   if (clouds2) clouds2.rotation.y += dt * 0.007;
-
-  // 地球著色器時間
   if (earthShaderMat && earthShaderMat.uniforms.uTime) {
     earthShaderMat.uniforms.uTime.value = now * 0.001;
   }
-
-  // 太陽日冕呼吸脈動
   if (corona) {
     const pulse = 180 + Math.sin(now / 1400) * 14;
     corona.scale.set(pulse, pulse, 1);
   }
-
-  // 信標燈交錯閃爍
   if (beacons) {
     const phase = Math.sin(now / 650) > 0;
     for (let i = 0; i < beacons.length; i++) {
       beacons[i].material.emissiveIntensity = (i % 2 === 0) ? (phase ? 2.8 : 0.05) : (phase ? 0.05 : 2.8);
     }
   }
-
-  // RCS 噴焰透明度即時響應
   if (rcsPlumes) {
     const tx = controls.transInput.x;
     const ty = controls.transInput.y;
@@ -364,8 +477,6 @@ function animate() {
     if (rcsPlumes.up) rcsPlumes.up.material.opacity = Math.max(0, -ty * 0.9);
     if (rcsPlumes.down) rcsPlumes.down.material.opacity = Math.max(0, ty * 0.9);
   }
-
-  // 太陽能板柔性結構顫動
   if (wings) {
     for (let i = 0; i < wings.length; i++) {
       wings[i].rotation.x = Math.sin(now * 0.0015 + i * 1.2) * 0.006;
