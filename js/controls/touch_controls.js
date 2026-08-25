@@ -3,16 +3,15 @@ import * as THREE from 'three';
 
 export class DualTouchControls {
   constructor() {
-    this.transInput = new THREE.Vector2(); // 平移輸入 (X/Y)
-    this.rotInput = new THREE.Vector2();   // 姿態輸入 (P/Y)
+    this.transInput = new THREE.Vector2(0, 0); // 平移 (X, Y)
+    this.rotInput = new THREE.Vector2(0, 0);   // 姿態 (Pitch, Yaw)
     
     this.zoneTrans = document.getElementById('zone-trans');
     this.knobTrans = document.getElementById('knob-trans');
     this.zoneRot = document.getElementById('zone-rot');
     this.knobRot = document.getElementById('knob-rot');
 
-    this.maxRadius = 38;
-    this.deadZone = 0.08;
+    this.maxRadius = 36;
     this.transTouchId = null;
     this.rotTouchId = null;
 
@@ -20,80 +19,106 @@ export class DualTouchControls {
   }
 
   initEvents() {
-    // 平移搖桿監聽
+    // 監聽平移區域 (左側)
     if (this.zoneTrans) {
-      this.zoneTrans.addEventListener('touchstart', (e) => {
-        e.stopPropagation();
-        const touch = e.changedTouches[0];
-        this.transTouchId = touch.identifier;
-        this.updateJoystick(touch, this.zoneTrans, this.knobTrans, this.transInput);
-      }, { passive: false });
-
-      this.zoneTrans.addEventListener('touchmove', (e) => {
+      const onTransStart = (e) => {
         e.preventDefault();
         e.stopPropagation();
         for (let i = 0; i < e.changedTouches.length; i++) {
-          if (e.changedTouches[i].identifier === this.transTouchId) {
-            this.updateJoystick(e.changedTouches[i], this.zoneTrans, this.knobTrans, this.transInput);
+          const t = e.changedTouches[i];
+          if (this.transTouchId === null) {
+            this.transTouchId = t.identifier;
+            this.processTouch(t, this.zoneTrans, this.knobTrans, this.transInput);
+            break;
           }
         }
-      }, { passive: false });
+      };
 
-      const resetTrans = (e) => {
+      const onTransMove = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const t = e.changedTouches[i];
+          if (t.identifier === this.transTouchId) {
+            this.processTouch(t, this.zoneTrans, this.knobTrans, this.transInput);
+            break;
+          }
+        }
+      };
+
+      const onTransEnd = (e) => {
+        e.preventDefault();
         e.stopPropagation();
         for (let i = 0; i < e.changedTouches.length; i++) {
           if (e.changedTouches[i].identifier === this.transTouchId) {
             this.transTouchId = null;
             this.transInput.set(0, 0);
             this.knobTrans.style.transform = 'translate(-50%, -50%)';
+            break;
           }
         }
       };
-      this.zoneTrans.addEventListener('touchend', resetTrans, { passive: false });
-      this.zoneTrans.addEventListener('touchcancel', resetTrans, { passive: false });
+
+      this.zoneTrans.addEventListener('touchstart', onTransStart, { passive: false });
+      this.zoneTrans.addEventListener('touchmove', onTransMove, { passive: false });
+      this.zoneTrans.addEventListener('touchend', onTransEnd, { passive: false });
+      this.zoneTrans.addEventListener('touchcancel', onTransEnd, { passive: false });
     }
 
-    // 姿態搖桿監聽
+    // 監聽姿態區域 (右側)
     if (this.zoneRot) {
-      this.zoneRot.addEventListener('touchstart', (e) => {
-        e.stopPropagation();
-        const touch = e.changedTouches[0];
-        this.rotTouchId = touch.identifier;
-        this.updateJoystick(touch, this.zoneRot, this.knobRot, this.rotInput);
-      }, { passive: false });
-
-      this.zoneRot.addEventListener('touchmove', (e) => {
+      const onRotStart = (e) => {
         e.preventDefault();
         e.stopPropagation();
         for (let i = 0; i < e.changedTouches.length; i++) {
-          if (e.changedTouches[i].identifier === this.rotTouchId) {
-            this.updateJoystick(e.changedTouches[i], this.zoneRot, this.knobRot, this.rotInput);
+          const t = e.changedTouches[i];
+          if (this.rotTouchId === null) {
+            this.rotTouchId = t.identifier;
+            this.processTouch(t, this.zoneRot, this.knobRot, this.rotInput);
+            break;
           }
         }
-      }, { passive: false });
+      };
 
-      const resetRot = (e) => {
+      const onRotMove = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const t = e.changedTouches[i];
+          if (t.identifier === this.rotTouchId) {
+            this.processTouch(t, this.zoneRot, this.knobRot, this.rotInput);
+            break;
+          }
+        }
+      };
+
+      const onRotEnd = (e) => {
+        e.preventDefault();
         e.stopPropagation();
         for (let i = 0; i < e.changedTouches.length; i++) {
           if (e.changedTouches[i].identifier === this.rotTouchId) {
             this.rotTouchId = null;
             this.rotInput.set(0, 0);
             this.knobRot.style.transform = 'translate(-50%, -50%)';
+            break;
           }
         }
       };
-      this.zoneRot.addEventListener('touchend', resetRot, { passive: false });
-      this.zoneRot.addEventListener('touchcancel', resetRot, { passive: false });
+
+      this.zoneRot.addEventListener('touchstart', onRotStart, { passive: false });
+      this.zoneRot.addEventListener('touchmove', onRotMove, { passive: false });
+      this.zoneRot.addEventListener('touchend', onRotEnd, { passive: false });
+      this.zoneRot.addEventListener('touchcancel', onRotEnd, { passive: false });
     }
   }
 
-  updateJoystick(touch, zone, knob, outVector) {
+  processTouch(touch, zone, knob, outVector) {
     const rect = zone.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
 
-    let dx = touch.clientX - centerX;
-    let dy = touch.clientY - centerY;
+    let dx = touch.clientX - cx;
+    let dy = touch.clientY - cy;
     const dist = Math.hypot(dx, dy);
 
     if (dist > this.maxRadius) {
@@ -103,16 +128,8 @@ export class DualTouchControls {
 
     knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
 
-    let normX = dx / this.maxRadius;
-    let normY = -dy / this.maxRadius;
-    const normDist = Math.hypot(normX, normY);
-
-    if (normDist < this.deadZone) {
-      outVector.set(0, 0);
-    } else {
-      const factor = (normDist - this.deadZone) / (1.0 - this.deadZone);
-      const curvedSpeed = factor * factor;
-      outVector.set((normX / normDist) * curvedSpeed, (normY / normDist) * curvedSpeed);
-    }
+    // 向量輸出：X 軸 [-1, 1], Y 軸 [-1, 1] (推前為正 Y)
+    outVector.x = dx / this.maxRadius;
+    outVector.y = -dy / this.maxRadius;
   }
 }
