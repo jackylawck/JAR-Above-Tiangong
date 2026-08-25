@@ -11,10 +11,10 @@
 ## 📖 關於本專案 (About This Project)
 
 ### 繁體中文
-這是為了我和兒子共渡美好時光而打造的個人非商業航太科普專案！我們希望透過純代碼在瀏覽器中重建一座高精度的天宮空間站（CSS），讓孩子能親手推動虛擬 RCS 搖桿，在掌握軌道動力學與相對運動規律的過程中，感受工程解難與太空探索的純粹樂趣。誠邀所有大小朋友一同化身神舟飛船指揮官，體驗精準對接天宮核心艙的挑戰與成就感！
+這是為了我和兒子共渡美好時光而打造的個人非商業航太科普專案！我們希望重建一座高精度的天宮空間站（CSS），讓孩子能感受太空探索的純粹樂趣。誠邀所有朋友一同化身神舟飛船指揮官，體驗精準對接天宮核心艙的挑戰與成就感！
 
 ### English
-This project is a personal, non-commercial endeavor created to share inspiring, quality moments with my son! By building a high-precision, zero-asset 3D Tiangong Space Station simulator directly in the browser, we aim to spark curiosity in orbital mechanics and aerospace guidance. We warmly welcome everyone to take the helm of a Shenzhou spacecraft, master RCS thruster dynamics, and experience the thrill of manual docking with the Tiangong Space Station!
+This project is a personal, non-commercial aerospace education endeavor created to share meaningful time with my son. We aim to recreate a high-fidelity model of the Tiangong Space Station (CSS), allowing children to experience the pure joy of space exploration. We warmly invite everyone to step into the role of a Shenzhou spacecraft commander, take on the challenge of precisely docking with the Tiangong core module, and experience the satisfaction of a successful manual docking.
 
 ---
 
