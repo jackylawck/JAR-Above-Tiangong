@@ -28,7 +28,7 @@ export function setupStationScene() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.3;
+  renderer.toneMappingExposure = 1.35;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x010103);
@@ -36,10 +36,10 @@ export function setupStationScene() {
 
   // --- 1. 光照系統 ---
   const sunDir = new THREE.Vector3(1.0, 0.5, 0.8).normalize();
-  const sunLight = new THREE.DirectionalLight(0xffeedd, 3.5);
+  const sunLight = new THREE.DirectionalLight(0xffeedd, 3.8);
   sunLight.position.copy(sunDir).multiplyScalar(300);
   scene.add(sunLight);
-  scene.add(new THREE.AmbientLight(0x0a1525, 0.3));
+  scene.add(new THREE.AmbientLight(0x0a1525, 0.35));
 
   const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(12, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffaa55 }));
   sunMesh.position.copy(sunDir).multiplyScalar(900);
@@ -196,19 +196,15 @@ export function setupStationScene() {
   earth.position.set(0, -420, -50);
   scene.add(earth);
 
-  // --- 正確位置：月球實體網格 ---
-  const moonRadius = 24;
-  const moonGeo = new THREE.SphereGeometry(moonRadius, 32, 32);
-  const moonMat = new THREE.MeshStandardMaterial({
-    color: 0x888890,
-    roughness: 0.95,
-    metalness: 0.05
-  });
-  const moon = new THREE.Mesh(moonGeo, moonMat);
+  // 月球
+  const moon = new THREE.Mesh(
+    new THREE.SphereGeometry(24, 32, 32),
+    new THREE.MeshStandardMaterial({ color: 0x888890, roughness: 0.95, metalness: 0.05 })
+  );
   moon.position.set(-600, 320, -1200);
   scene.add(moon);
 
-  // ☁️ 雲層 (Lambert 材質)
+  // 雲層
   const clouds = new THREE.Mesh(
     new THREE.SphereGeometry(earthRadius * 1.015, 64, 64),
     new THREE.MeshLambertMaterial({ 
@@ -223,13 +219,12 @@ export function setupStationScene() {
   clouds.position.copy(earth.position);
   scene.add(clouds);
 
-  // 🌍 大氣邊緣散射
+  // 大氣層
   const atmosphere = new THREE.Mesh(
     new THREE.SphereGeometry(earthRadius * 1.045, 64, 64),
     new THREE.ShaderMaterial({
       vertexShader: `
-        varying vec3 vNormal;
-        varying vec3 vViewPosition;
+        varying vec3 vNormal; varying vec3 vViewPosition;
         void main() {
           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
           vNormal = normalize(normalMatrix * normal);
@@ -238,8 +233,7 @@ export function setupStationScene() {
         }
       `,
       fragmentShader: `
-        varying vec3 vNormal;
-        varying vec3 vViewPosition;
+        varying vec3 vNormal; varying vec3 vViewPosition;
         void main() {
           vec3 normal = normalize(vNormal);
           vec3 viewDir = normalize(vViewPosition);
@@ -248,63 +242,138 @@ export function setupStationScene() {
           gl_FragColor = vec4(0.2, 0.5, 1.0, intensity * 0.85);
         }
       `,
-      transparent: true, 
-      blending: THREE.AdditiveBlending, 
-      side: THREE.FrontSide,
-      depthWrite: false
+      transparent: true, blending: THREE.AdditiveBlending, side: THREE.FrontSide, depthWrite: false
     })
   );
   atmosphere.position.copy(earth.position);
   scene.add(atmosphere);
 
-  // --- 4. 空間站與心跳燈 ---
+  // ==========================================
+  // 🛰️ 天宮空間站（T 字真實構型還原）
+  // ==========================================
   const station = new THREE.Group();
-  function addGlowEdges(mesh) { mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0.3 }))); return mesh; }
   
-  const ccm = addGlowEdges(new THREE.Mesh(new THREE.CylinderGeometry(2, 2.2, 14, 32), new THREE.MeshStandardMaterial({ color: 0xf0f4f8, metalness: 0.6, roughness: 0.25 })));
-  ccm.rotation.x = Math.PI / 2;
-  const node = addGlowEdges(new THREE.Mesh(new THREE.SphereGeometry(1.8, 32, 32), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.15 })));
-  node.position.z = 8;
-  const targetRing = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.08, 16, 32), new THREE.MeshBasicMaterial({ color: 0x00ff88 }));
-  targetRing.position.z = 9.5;
+  // 航太材質
+  const mliWhite = new THREE.MeshStandardMaterial({ color: 0xf5f7fa, metalness: 0.5, roughness: 0.25 });
+  const mliGold = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.85, roughness: 0.2 });
+  const metalGrey = new THREE.MeshStandardMaterial({ color: 0x6a7b8c, metalness: 0.8, roughness: 0.3 });
+  const solarBlue = new THREE.MeshStandardMaterial({ color: 0x02162e, metalness: 0.95, roughness: 0.08, emissive: 0x001122 });
+
+  function addLines(mesh, color = 0x00d4ff, opacity = 0.35) {
+    const wire = new THREE.LineSegments(
+      new THREE.EdgesGeometry(mesh.geometry),
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity })
+    );
+    mesh.add(wire);
+    return mesh;
+  }
+
+  // 1. 天和核心艙 (Tianhe Core Module)
+  const coreGroup = new THREE.Group();
+  // 節點艙 (前端球形對接機構)
+  const nodeBall = addLines(new THREE.Mesh(new THREE.SphereGeometry(2.0, 32, 32), mliGold));
+  nodeBall.position.z = 8.5;
+  // 小柱段
+  const smallCyl = addLines(new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 6.0, 32), mliWhite));
+  smallCyl.rotation.x = Math.PI / 2;
+  smallCyl.position.z = 4.5;
+  // 大柱段 (後端生活與資源艙)
+  const bigCyl = addLines(new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 10.0, 32), mliWhite));
+  bigCyl.rotation.x = Math.PI / 2;
+  bigCyl.position.z = -3.5;
+  // 尾部貨運對接環
+  const aftPort = addLines(new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.4, 1.5, 32), metalGrey));
+  aftPort.rotation.x = Math.PI / 2;
+  aftPort.position.z = -9.25;
   
+  coreGroup.add(nodeBall, smallCyl, bigCyl, aftPort);
+  station.add(coreGroup);
+
+  // 2. 綠色對接瞄準光環 (前向主對接口)
+  const targetRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.85, 0.08, 16, 32),
+    new THREE.MeshBasicMaterial({ color: 0x00ff88 })
+  );
+  targetRing.position.z = 10.5;
+  station.add(targetRing);
+
+  // 3. 問天實驗艙 (Wentian Lab Module - 左側 -X)
+  const wentianGroup = new THREE.Group();
+  const wentianBody = addLines(new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 12.0, 32), mliWhite));
+  wentianBody.rotation.z = Math.PI / 2;
+  const wentianAirlock = addLines(new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 3.0, 32), metalGrey));
+  wentianAirlock.position.set(-6.5, 1.2, 0);
+  wentianGroup.add(wentianBody, wentianAirlock);
+  wentianGroup.position.set(-7.5, 0, 5.5);
+  station.add(wentianGroup);
+
+  // 4. 夢天實驗艙 (Mengtian Lab Module - 右側 +X)
+  const mengtianGroup = new THREE.Group();
+  const mengtianBody = addLines(new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 12.0, 32), mliWhite));
+  mengtianBody.rotation.z = Math.PI / 2;
+  const mengtianCargo = addLines(new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 3.0), metalGrey));
+  mengtianCargo.position.set(6.5, 0, 0);
+  mengtianGroup.add(mengtianBody, mengtianCargo);
+  mengtianGroup.position.set(7.5, 0, 5.5);
+  station.add(mengtianGroup);
+
+  // 5. 雙向超大柔性太陽能翼 (巨大的雙翼 T 字外觀)
+  const wings = [];
+  function createSolarArray(xPos, yAngle) {
+    const arrayGroup = new THREE.Group();
+    const panel1 = addLines(new THREE.Mesh(new THREE.BoxGeometry(20, 0.06, 5.5), solarBlue), 0x0088ff, 0.6);
+    panel1.position.x = xPos > 0 ? 12 : -12;
+    const truss = addLines(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 5, 8), metalGrey));
+    truss.rotation.z = Math.PI / 2;
+    truss.position.x = xPos > 0 ? 1.5 : -1.5;
+    arrayGroup.add(panel1, truss);
+    arrayGroup.position.set(xPos, 0, 5.5);
+    arrayGroup.rotation.y = yAngle;
+    wings.push(panel1);
+    return arrayGroup;
+  }
+  station.add(createSolarArray(-16.5, 0));
+  station.add(createSolarArray(16.5, 0));
+
+  // 6. 神舟載人飛船 (對接於節點艙下方 -Y)
+  const shenzhou = new THREE.Group();
+  const szCapsule = addLines(new THREE.Mesh(new THREE.ConeGeometry(1.4, 2.2, 24), mliGold));
+  szCapsule.position.y = -1.1;
+  const szOrbital = addLines(new THREE.Mesh(new THREE.SphereGeometry(1.2, 24, 24), mliWhite));
+  szOrbital.position.y = -2.8;
+  const szService = addLines(new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 3.0, 24), metalGrey));
+  szService.position.y = -4.8;
+  shenzhou.add(szCapsule, szOrbital, szService);
+  shenzhou.position.set(0, -2.5, 8.5);
+  station.add(shenzhou);
+
+  // 7. 防撞呼吸燈 (天宮 Beacon 燈組)
   const beaconMatRed = new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff0000, emissiveIntensity: 1.5 });
   const beaconMatBlue = new THREE.MeshStandardMaterial({ color: 0x0066ff, emissive: 0x0044ff, emissiveIntensity: 1.5 });
-  const beacon1 = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), beaconMatRed); beacon1.position.set(-2.2, 1.2, -6);
-  const beacon2 = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), beaconMatBlue); beacon2.position.set(2.2, 1.2, -6);
-  const beacon3 = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), beaconMatRed); beacon3.position.set(0, -1.8, 7.5);
+  const beacon1 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), beaconMatRed); beacon1.position.set(-26.5, 0.5, 5.5);
+  const beacon2 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), beaconMatBlue); beacon2.position.set(26.5, 0.5, 5.5);
+  const beacon3 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), beaconMatRed); beacon3.position.set(0, 3.0, 8.5);
   const beacons = [beacon1, beacon2, beacon3];
-  
-  station.add(ccm, node, targetRing, beacon1, beacon2, beacon3);
+  station.add(beacon1, beacon2, beacon3);
+
   scene.add(station);
 
-  // --- 5. RCS 推進器尾焰 ---
+  // --- 8. 飛船本體 RCS 噴焰 (四角外側佈局) ---
   const rcsGroup = new THREE.Group();
   const plumeGeo = new THREE.ConeGeometry(0.15, 1.2, 8);
   plumeGeo.translate(0, -0.6, 0); 
   const plumeMat = new THREE.MeshBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
   
-  const plumeL = new THREE.Mesh(plumeGeo, plumeMat); 
-  plumeL.position.set(-3.2, -0.8, -1.5); 
-  plumeL.rotation.set(0, 0, Math.PI / 2); 
-  
-  const plumeR = new THREE.Mesh(plumeGeo, plumeMat); 
-  plumeR.position.set(3.2, -0.8, -1.5);  
-  plumeR.rotation.set(0, 0, -Math.PI / 2); 
-  
-  const plumeU = new THREE.Mesh(plumeGeo, plumeMat); 
-  plumeU.position.set(0, 1.8, -1.5);     
-  plumeU.rotation.set(Math.PI / 2, 0, 0); 
-  
-  const plumeD = new THREE.Mesh(plumeGeo, plumeMat); 
-  plumeD.position.set(0, -2.2, -1.5);    
-  plumeD.rotation.set(-Math.PI / 2, 0, 0); 
+  const plumeL = new THREE.Mesh(plumeGeo, plumeMat); plumeL.position.set(-3.2, -0.8, -1.5); plumeL.rotation.set(0, 0, Math.PI / 2); 
+  const plumeR = new THREE.Mesh(plumeGeo, plumeMat); plumeR.position.set(3.2, -0.8, -1.5);  plumeR.rotation.set(0, 0, -Math.PI / 2); 
+  const plumeU = new THREE.Mesh(plumeGeo, plumeMat); plumeU.position.set(0, 1.8, -1.5);     plumeU.rotation.set(Math.PI / 2, 0, 0); 
+  const plumeD = new THREE.Mesh(plumeGeo, plumeMat); plumeD.position.set(0, -2.2, -1.5);    plumeD.rotation.set(-Math.PI / 2, 0, 0); 
   
   rcsGroup.add(plumeL, plumeR, plumeU, plumeD);
   camera.add(rcsGroup);
   scene.add(camera);
-  
+
   const rcsPlumes = { left: plumeL, right: plumeR, up: plumeU, down: plumeD };
 
-  return { renderer, scene, camera, targetRingPos: new THREE.Vector3(0, 0, 9.5), earthShaderMat, clouds, beacons, rcsPlumes };
+  return { renderer, scene, camera, targetRingPos: new THREE.Vector3(0, 0, 10.5), earthShaderMat, clouds, beacons, rcsPlumes, wings };
 }
