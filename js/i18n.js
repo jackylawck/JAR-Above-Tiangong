@@ -1,11 +1,8 @@
 // js/i18n.js
-
-// 優化 1：修正為小寫 export
 export class I18nManager {
   constructor() {
     this.currentLang = 'zh-HK';
     
-    // 優化 2：補齊所有最新的 GOTY 級遙測與狀態詞彙
     this.dict = {
       'zh-HK': {
         appTitle: 'J.A.R. 天宮之上 3D',
@@ -24,12 +21,26 @@ export class I18nManager {
         statusDocked: '對接鎖定成功 (HARD DOCK)',
         statusOverSpeed: '警告：接近超速！',
         statusAbort: '緊急退避程序已啟動！',
-        
-        // 補齊 HTML 中新增的詞彙
         altLabel: '高度',
         rpyLabel: '姿態(R/P/Y)',
         offsetLabel: '對接軸偏差',
-        covLabel: 'MEKF方差'
+        covLabel: 'MEKF方差',
+        
+        // --- 新增：動態 UI 與 J.A.R. 敘事對話 ---
+        diffKid: '🧒 兒童模式',
+        diffPro: '🛠️ 進階模式',
+        diffSci: '🔬 科學模式',
+        modeAuto: '模式: 自動',
+        modeManual: '模式: 手動',
+        modeLocked: '模式: 手動 (鎖定)',
+        narrKid: 'Jarvis，準備好對接了嗎？交給你了！大膽推搖桿吧！',
+        narrSci: '警告：輔助系統已離線。請全手動精確對接。',
+        narrPro: '指揮官，我是 J.A.R.，CW 導航已啟動，請控制接近率。',
+        narrFail: '結構應力過載... 任務失敗！',
+        statusFail: '💀 任務失敗 (MISSION FAILED)',
+        narrSuccess: '對接機構鎖定。J.A.R. 祝賀您，任務圓滿成功。',
+        alertSci: '🔬 [SCIENTIST MODE ACTIVE]\n科學模式已強制鎖定：禁止推力過載！',
+        alertBird: '🦅 [CALLSIGN: FIRE BIRD UNLOCKED]\n已啟動「火鷹」特技飛行模式：RCS 推力限制解除！'
       },
       'en': {
         appTitle: 'J.A.R. Above Tiangong 3D',
@@ -48,29 +59,37 @@ export class I18nManager {
         statusDocked: 'HARD DOCK SUCCESS',
         statusOverSpeed: 'APPROACH OVER-SPEED!',
         statusAbort: 'EMERGENCY ABORT RETREAT!',
-        
-        // 補齊 HTML 中新增的詞彙
         altLabel: 'ALT',
         rpyLabel: 'ATT(R/P/Y)',
         offsetLabel: 'OFFSET',
-        covLabel: 'MEKF COV'
+        covLabel: 'MEKF COV',
+        
+        // --- 新增：動態 UI 與 J.A.R. 敘事對話 ---
+        diffKid: '🧒 KID MODE',
+        diffPro: '🛠️ PRO MODE',
+        diffSci: '🔬 SCI MODE',
+        modeAuto: 'MODE: AUTO',
+        modeManual: 'MODE: MANUAL',
+        modeLocked: 'MODE: MANUAL (LOCKED)',
+        narrKid: 'Jarvis, ready to dock? You have control. Push the stick!',
+        narrSci: 'WARNING: Assists offline. Manual precision docking required.',
+        narrPro: 'Commander, this is J.A.R. CW Nav active. Control approach rate.',
+        narrFail: 'Structural stress critical... Mission Failed!',
+        statusFail: '💀 MISSION FAILED',
+        narrSuccess: 'Docking mechanism locked. J.A.R. congratulates you on a successful mission.',
+        alertSci: '🔬 [SCIENTIST MODE ACTIVE]\nLocked in Scientist Mode: Overdrive prohibited!',
+        alertBird: '🦅 [CALLSIGN: FIRE BIRD UNLOCKED]\nAcrobatic mode engaged: RCS thrust limits removed!'
       }
     };
 
-    // 優化 3：預先快取 DOM 節點，避免反覆查詢
     this.domCache = [];
     this.initDOMCache();
   }
 
-  // 初始化時遍歷一次 DOM，並把指標存起來
   initDOMCache() {
-    // ES Module 執行時 DOM 已準備就緒，可直接抓取
     const els = document.querySelectorAll('[data-i18n]');
     for (let i = 0; i < els.length; i++) {
-      this.domCache.push({
-        node: els[i],
-        key: els[i].getAttribute('data-i18n')
-      });
+      this.domCache.push({ node: els[i], key: els[i].getAttribute('data-i18n') });
     }
   }
 
@@ -81,7 +100,6 @@ export class I18nManager {
   }
 
   updateDOM() {
-    // 極致效能：直接遍歷快取陣列，0 次 DOM Tree 查詢，0 個回呼函數閉包
     for (let i = 0; i < this.domCache.length; i++) {
       const item = this.domCache[i];
       const text = this.dict[this.currentLang][item.key];
