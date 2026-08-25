@@ -1,6 +1,30 @@
 // js/render/station_scene.js
 import * as THREE from 'three';
 
+// 雲層紋理延遲初始化快取 (Lazy Initialization Closure)
+const getCloudTexture = (() => {
+  let cache = null;
+  return () => {
+    if (cache) return cache;
+
+    const c = document.createElement('canvas');
+    c.width = 1024;
+    c.height = 512;
+    const ctx = c.getContext('2d');
+    for (let y = 0; y < 512; y += 4) {
+      for (let x = 0; x < 1024; x += 4) {
+        const val = Math.sin(x * 0.02) * Math.cos(y * 0.02) + Math.sin((x + y) * 0.01);
+        const alpha = Math.max(0, Math.min(1, (val * 0.5 + 0.5) * 1.5 - 0.5));
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.8})`;
+        ctx.fillRect(x, y, 4, 4);
+      }
+    }
+    cache = new THREE.CanvasTexture(c);
+    cache.magFilter = THREE.LinearFilter;
+    return cache;
+  };
+})();
+
 export function setupStationScene() {
   const canvas = document.getElementById('webgl-canvas');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -14,14 +38,14 @@ export function setupStationScene() {
 
   const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 5000);
 
-  // 1. 光照系統 (增強太空高對比度)
+  // 1. 光照系統 (高對比度太空直射光與微弱環境光)
   const sunDir = new THREE.Vector3(1.0, 0.6, 0.8).normalize();
   const sunLight = new THREE.DirectionalLight(0xffeedd, 3.5);
   sunLight.position.copy(sunDir).multiplyScalar(200);
   scene.add(sunLight);
-  scene.add(new THREE.AmbientLight(0x0a1525, 0.4)); // 壓低環境光，增加戲劇性
+  scene.add(new THREE.AmbientLight(0x0a1525, 0.4));
 
-  // 2. 星空球殼 (球殼分佈 + 大小變化)
+  // 2. 星空背景 (球殼分佈)
   const starGeo = new THREE.BufferGeometry();
   const starCount = 2500;
   const starPos = new Float32Array(starCount * 3);
@@ -37,7 +61,7 @@ export function setupStationScene() {
   const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, transparent: true, opacity: 0.95 });
   scene.add(new THREE.Points(starGeo, starMat));
 
-  // 3. GPU 著色器地球 (GLSL 3D Simplex 噪聲 + 暮光散射)
+  // 3. GPU 著色器地球 (GLSL 3D Simplex FBM 噪聲 + Rayleigh 暮光散射)
   const earthRadius = 350;
   const earthShaderMat = new THREE.ShaderMaterial({
     uniforms: {
@@ -137,11 +161,11 @@ export function setupStationScene() {
           surfaceColor = mix(landGrass, landMtn, height);
         }
 
-        // 光照與晝夜終結線
+        // 光照與晝夜終結線計算
         float NdotL = dot(vNormal, uSunDirection);
         float light = clamp(NdotL, 0.0, 1.0);
         
-        // Rayleigh 暮光散射 (邊緣橙藍光)
+        // Rayleigh 暮光散射 (邊緣橙藍色光環)
         vec3 sunsetGlow = vec3(0.8, 0.35, 0.1) * clamp(1.0 - abs(NdotL) * 3.0, 0.0, 1.0);
         vec3 dayColor = surfaceColor * (light + 0.06) + sunsetGlow * (1.0 - isLand * 0.5);
 
@@ -154,28 +178,9 @@ export function setupStationScene() {
   earth.position.set(0, -420, -50);
   scene.add(earth);
 
-  // 4. 動態雲層 (已修復 SyntaxError 致命 Bug)
-  function generateCloudTexture() {
-    const c = document.createElement('canvas');
-    c.width = 1024; c.height = 512;
-    const ctx = c.getContext('2d');
-    for (let y = 0; y < 512; y+=4) {
-      for (let x = 0; x < 1024; x+=4) {
-        const val = Math.sin(x*0.02) * Math.cos(y*0.02) + Math.sin((x+y)*0.01);
-        const alpha = Math.max(0, Math.min(1, (val * 0.5 + 0.5) * 1.5 - 0.5));
-        
-        // 這是唯一正確的模板字串寫法，絕不能有反斜線！
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.8})`; 
-        ctx.fillRect(x, y, 4, 4);
-      }
-    }
-    const tex = new THREE.CanvasTexture(c);
-    tex.magFilter = THREE.LinearFilter;
-    return tex;
-  }
-  
+  // 4. 動態雲層 (使用快取避免阻塞主執行緒)
   const cloudMat = new THREE.MeshStandardMaterial({
-    map: generateCloudTexture(),
+    map: getCloudTexture(),
     transparent: true,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
@@ -186,7 +191,7 @@ export function setupStationScene() {
   clouds.position.copy(earth.position);
   scene.add(clouds);
 
-  // 5. 大氣層外圍輝光薄膜
+  // 5. 大氣層外圍菲涅爾薄膜 (Fresnel Rim Glow)
   const atmoShaderMat = new THREE.ShaderMaterial({
     vertexShader: `
       varying vec3 vNormal;
