@@ -1,7 +1,6 @@
 // js/render/station_scene.js
 import * as THREE from 'three';
 
-// 程序化月球紋理
 const getMoonTexture = (() => {
   let cache = null;
   return () => {
@@ -33,7 +32,6 @@ const getMoonTexture = (() => {
   };
 })();
 
-// 程序化太陽光暈 Sprite
 const getSunGlowTexture = (() => {
   let cache = null;
   return () => {
@@ -54,8 +52,7 @@ const getSunGlowTexture = (() => {
   };
 })();
 
-// 發光邊緣線輔助函式
-function addEdgeGlow(mesh, color = 0x00ccff, opacity = 0.3, thresholdAngle = 15) {
+function addEdgeGlow(mesh, color = 0x00ccff, opacity = 0.35, thresholdAngle = 15) {
   const edges = new THREE.EdgesGeometry(mesh.geometry, thresholdAngle);
   const mat = new THREE.LineBasicMaterial({ 
     color, 
@@ -85,9 +82,9 @@ export function setupStationScene() {
   const sunLight = new THREE.DirectionalLight(0xffeedd, 4.0);
   sunLight.position.copy(sunDir).multiplyScalar(300);
   scene.add(sunLight);
-  scene.add(new THREE.AmbientLight(0x0a1525, 0.25));
+  scene.add(new THREE.AmbientLight(0x0a1525, 0.35));
 
-  // 2. 太陽與日冕
+  // 2. 太陽
   const sunGroup = new THREE.Group();
   const sunMesh = new THREE.Mesh(
     new THREE.SphereGeometry(14, 32, 32),
@@ -109,7 +106,7 @@ export function setupStationScene() {
   sunGroup.add(corona);
   scene.add(sunGroup);
 
-  // 3. 彩色星空
+  // 3. 星空
   const starGeo = new THREE.BufferGeometry();
   const starCount = 3500;
   const starPos = new Float32Array(starCount * 3);
@@ -131,7 +128,7 @@ export function setupStationScene() {
   starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
   scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 1.2, vertexColors: true, transparent: true, opacity: 0.95 })));
 
-  // 4. 電影級地球
+  // 4. 地球
   const earthRadius = 350;
   const earthShaderMat = new THREE.ShaderMaterial({
     uniforms: { uSunDirection: { value: sunDir }, uTime: { value: 0 } },
@@ -146,7 +143,6 @@ export function setupStationScene() {
     fragmentShader: `
       uniform vec3 uSunDirection; uniform float uTime;
       varying vec3 vNormal; varying vec3 vPosition;
-
       vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
       vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
       float snoise(vec3 v){
@@ -173,19 +169,16 @@ export function setupStationScene() {
         m = m * m;
         return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
       }
-
       float fbm(vec3 p) {
         float v = 0.0; float a = 0.5; vec3 shift = vec3(100);
         for (int i = 0; i < 4; ++i) { v += a * snoise(p); p = p * 2.0 + shift; a *= 0.5; }
         return v;
       }
-
       void main() {
         vec3 normPos = normalize(vPosition);
         float n = fbm(normPos * 2.6);
         vec3 color;
         float isLand = step(0.02, n);
-        
         if (isLand < 0.5) {
           float depth = smoothstep(-0.4, 0.02, n);
           color = mix(vec3(0.005, 0.03, 0.15), vec3(0.0, 0.28, 0.48), depth);
@@ -194,27 +187,21 @@ export function setupStationScene() {
           color = mix(vec3(0.02, 0.14, 0.04), vec3(0.28, 0.22, 0.12), elevation);
           color = mix(color, vec3(0.75, 0.8, 0.85), smoothstep(0.35, 0.6, n));
         }
-        
         float poleMask = smoothstep(0.7, 0.95, abs(normPos.y));
         float iceNoise = fbm(normPos * 12.0);
         color = mix(color, vec3(0.88, 0.92, 0.96), poleMask * (0.5 + 0.5 * iceNoise));
-
         float NdotL = dot(vNormal, uSunDirection);
         float diffuse = max(0.0, (NdotL + 0.15) / 1.15);
-        
         float terminator = smoothstep(-0.25, 0.15, NdotL) * smoothstep(0.15, -0.25, NdotL);
         vec3 sunsetGlow = vec3(0.9, 0.28, 0.08) * terminator * 1.3;
-        
         float cityGlow = 0.0;
         if (NdotL < 0.0 && isLand > 0.5 && poleMask < 0.1) {
           float cityNoise = snoise(normPos * 45.0 + vec3(0, uTime * 0.001, 0));
           cityGlow = step(0.72, cityNoise) * smoothstep(0.0, -0.25, NdotL) * 2.2;
         }
-        
         vec3 finalColor = color * (diffuse + 0.03);
         finalColor += sunsetGlow;
         finalColor += vec3(1.0, 0.78, 0.28) * cityGlow * 2.5;
-
         gl_FragColor = vec4(finalColor, 1.0);
       }
     `
@@ -234,7 +221,7 @@ export function setupStationScene() {
   moon.position.set(-650, 380, -1100);
   scene.add(moon);
 
-  // 6. 雙層視差雲層
+  // 6. 雙層雲
   const cloudTex = (() => {
     const c = document.createElement('canvas');
     c.width = 1024; c.height = 512;
@@ -293,7 +280,9 @@ export function setupStationScene() {
   atmosphere.position.copy(earth.position);
   scene.add(atmosphere);
 
-  // 8. 天宮空間站主體
+  // ==========================================
+  // 8. 🛰️ 天宮空間站主體（已旋轉對準 -Y 來流方向）
+  // ==========================================
   const station = new THREE.Group();
   const matWhite = new THREE.MeshStandardMaterial({ color: 0xf0f2f5, metalness: 0.4, roughness: 0.3 });
   const matGold = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.85, roughness: 0.2 });
@@ -330,7 +319,7 @@ export function setupStationScene() {
   mengtian.position.set(7.0, 0, 5.5);
   station.add(wentian, mengtian);
 
-  // 柔性太陽能翼
+  // 柔性太陽翼
   const wings = [];
   function createSolarWing(xPos, yRot) {
     const group = new THREE.Group();
@@ -356,6 +345,9 @@ export function setupStationScene() {
   const beacon3 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), matRed); beacon3.position.set(0, 3.2, 8.0);
   const beacons = [beacon1, beacon2, beacon3];
   station.add(beacon1, beacon2, beacon3);
+
+  // 🚀 關鍵旋轉：將整座天宮空間站繞 X 軸轉 90 度，使對接口朝向 -Y（飛船飛來之方向）
+  station.rotation.x = Math.PI / 2;
   scene.add(station);
 
   // 9. RCS 推進噴焰
@@ -363,10 +355,10 @@ export function setupStationScene() {
   const plumeMat = new THREE.MeshBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
   const plumes = {};
   const plumeConfigs = [
-    { name: 'left', pos: [-3.2, -0.8, -1.5], rot: [0, 0, Math.PI/2] },
-    { name: 'right', pos: [3.2, -0.8, -1.5], rot: [0, 0, -Math.PI/2] },
-    { name: 'up', pos: [0, 1.8, -1.5], rot: [Math.PI/2, 0, 0] },
-    { name: 'down', pos: [0, -2.2, -1.5], rot: [-Math.PI/2, 0, 0] }
+    { name: 'left', pos: [-3.2, -1.5, -0.8], rot: [0, 0, Math.PI/2] },
+    { name: 'right', pos: [3.2, -1.5, -0.8], rot: [0, 0, -Math.PI/2] },
+    { name: 'up', pos: [0, -1.5, 1.8], rot: [Math.PI/2, 0, 0] },
+    { name: 'down', pos: [0, -1.5, -2.2], rot: [-Math.PI/2, 0, 0] }
   ];
   plumeConfigs.forEach(cfg => {
     const geo = new THREE.ConeGeometry(0.15, 1.2, 8);
@@ -380,11 +372,12 @@ export function setupStationScene() {
   camera.add(rcsGroup);
   scene.add(camera);
 
+  // 對接環在世界座標中的實際位置 (Y = -10.5)
   return {
     renderer,
     scene,
     camera,
-    targetRingPos: new THREE.Vector3(0, 0, 10.5),
+    targetRingPos: new THREE.Vector3(0, -10.5, 0),
     earthShaderMat,
     clouds,
     clouds2,
