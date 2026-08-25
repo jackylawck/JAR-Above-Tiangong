@@ -73,7 +73,7 @@ function toggleTelemetryPanel() {
 
 if (panelToggleHeader) panelToggleHeader.onclick = toggleTelemetryPanel;
 
-// 煙火特效
+// 煙火粒子
 const FIREWORK_COUNT = 600;
 const fwGeo = new THREE.BufferGeometry();
 const fwPos = new Float32Array(FIREWORK_COUNT * 3);
@@ -198,7 +198,6 @@ let diffIndex = 0;
 const diffLevels = [Difficulty.KID, Difficulty.PRO, Difficulty.SCIENTIST];
 const diffKeys = ['diffKid', 'diffPro', 'diffSci'];
 
-// 預設為兒童模式 + 手動控制權
 fsm.setDifficulty(Difficulty.KID);
 fsm.setMode(MissionModes.MANUAL);
 btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
@@ -276,32 +275,31 @@ function animate() {
 
   const isKid = fsm.difficulty === Difficulty.KID;
 
-  // 🚀 關鍵修復：手動輸入全面生效
-  // 平移搖桿：推前 (Y>0) 向空間站加速，拉後 (Y<0) 倒車煞車，左右 (X) 橫移
+  // 1. 平移輸入映射
   _rawThrust.set(
     controls.transInput.x * 2.5,
     0,
     -controls.transInput.y * 3.5
   );
   
-  // 姿態搖桿：俯仰 (Pitch) 與 偏航 (Yaw)
+  // 2. 姿態輸入映射：大幅提升力矩敏感度 (Pitch / Yaw)
   _rawTorque.set(
-    controls.rotInput.y * 0.25,
-    -controls.rotInput.x * 0.25,
+    controls.rotInput.y * 1.8,
+    -controls.rotInput.x * 1.8,
     0
   );
 
   const currentDist = Math.hypot(engine.state[0], engine.state[1], engine.state[2] - targetRingPos.z);
 
-  // 兒童模式輔助：如果未輸入煞車，保持微前進；並在接近時磁吸自動對準
+  // 兒童模式自動輔助
   if (isKid && isMissionActive && fsm.mode !== MissionModes.ABORT) {
     if (Math.abs(controls.transInput.y) < 0.05 && engine.state[5] > -0.15) {
-      _rawThrust.z -= 0.5; // 自動微推力巡航
+      _rawThrust.z -= 0.5; // 自動微推力
     }
+    // 磁吸對心
     if (currentDist < 25.0) {
       _rawThrust.x -= engine.state[0] * 0.12;
       _rawThrust.y -= engine.state[1] * 0.12;
-      mekf.qNominal.slerp(new THREE.Quaternion(0, 0, 0, 1), 0.05);
     }
   }
 
@@ -309,7 +307,7 @@ function animate() {
 
   const massRatio = 3300.0 / (engine.massDry + engine.fuel); 
   const maxThrustRate = 5.0 * massRatio; 
-  const maxTorqueRate = 3.5 * massRatio;
+  const maxTorqueRate = 8.0 * massRatio; // 釋放角加速度響應限制
 
   _deltaThrust.subVectors(_rawThrust, currentActualThrust);
   if (_deltaThrust.lengthSq() > (maxThrustRate * dt) ** 2) {
@@ -324,18 +322,11 @@ function animate() {
   currentActualTorque.add(_deltaTorque);
 
   const phys = engine.step(dt, currentActualThrust, currentActualTorque);
-  const starQuat = fdir.voteStarSensors(phys.quat);
   
-  _imuWrapper.acc = phys.accBody;
-  _imuWrapper.gyro = engine.omega;
-  sync.pushSample(now, _imuWrapper, phys.pos, starQuat);
+  // 姿態解算：直接採用物理實體姿態，消除濾波器對手動操控的平滑滯後
+  mekf.qNominal.copy(phys.quat);
 
-  const syncdData = sync.getInterpolatedSample(now - 40);
-  if (syncdData) {
-    mekf.predict(dt, syncdData.gyro, syncdData.acc);
-    mekf.update(syncdData.starQuat, syncdData.lidarPos, null, true, true);
-  }
-
+  // 鏡頭抖動與位置同步
   if (screenShake > 0.001) {
     camera.position.set(
       phys.pos.x + (Math.random() - 0.5) * screenShake,
@@ -346,8 +337,9 @@ function animate() {
   } else {
     camera.position.copy(phys.pos);
   }
-  camera.quaternion.copy(mekf.qNominal);
+  camera.quaternion.copy(phys.quat);
 
+  // 準星與 HUD 投影
   _screenPos.copy(targetRingPos).project(camera);
   const cx = (_screenPos.x * window.innerWidth) / 2;
   const cy = (-_screenPos.y * window.innerHeight) / 2;
@@ -355,7 +347,7 @@ function animate() {
 
   const distToRing = phys.pos.distanceTo(targetRingPos);
   const speed = phys.vel.length();
-  _euler.setFromQuaternion(mekf.qNominal);
+  _euler.setFromQuaternion(phys.quat);
 
   const lerpUI = 0.2;
   displayRange += (distToRing - displayRange) * lerpUI;
@@ -382,6 +374,15 @@ function animate() {
   } else {
     uiRange.style.color = '#ffffff';
     uiRange.style.textShadow = 'none';
+  }
+
+  if (speed > fsm.maxSafeApproachSpeed && distToRing < 15.0) {
+    uiRate.style.color = '#ff3355';
+    const glow = 8 + Math.sin(now / 150) * 6;
+    uiRate.style.textShadow = `0 0 ${glow}px #ff3355`;
+  } else {
+    uiRate.style.color = '#ffffff';
+    uiRate.style.textShadow = 'none';
   }
 
   if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(distToRing);
@@ -474,7 +475,6 @@ function animate() {
     }
   }
   
-  // 🚀 噴焰響應搖桿
   if (rcsPlumes) {
     const tx = controls.transInput.x;
     const ty = controls.transInput.y;
