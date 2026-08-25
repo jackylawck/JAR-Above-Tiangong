@@ -11,29 +11,25 @@
   <canvas id="webgl-canvas"></canvas>
 
   <div id="hud-overlay">
-    <!-- 頂部主飛行儀表 -->
     <div class="flight-director">
       <div class="primary-telemetry">
         <div class="pri-data-row">
-          <span id="title-tag" class="interactive" style="cursor:pointer;">
+          <span id="title-tag" class="interactive">
             <span data-i18n="appTitle">J.A.R. 天宮之上 3D</span>
             <span style="font-size:10px; opacity:0.6;">[V4.5-CDR]</span>
           </span>
         </div>
         
-        <!-- 一級關鍵數據 -->
         <div class="pri-data-row" style="font-size: 15px; margin-top: 4px;">
           <span data-i18n="rangeLabel">距離</span>: <span id="val-range" style="color:#fff;">0.00</span> m | 
           <span data-i18n="rateLabel">速度</span>: <span id="val-rate" style="color:#fff;">0.00</span> m/s
         </div>
 
-        <!-- 二級系統狀態 -->
         <div class="sec-data-row">
           <span><span data-i18n="fsmLabel">狀態</span>: <span id="val-fsm" style="color:#00ffaa;">V-BAR APPROACH</span></span> | 
           <span><span data-i18n="fuelLabel">燃料</span>: <span id="val-fuel">300.0</span> kg</span>
         </div>
 
-        <!-- 三級即時遙測流 (Telemetry Stream) -->
         <div id="telem-stream" style="font-size:9px; opacity:0.75; margin-top:6px; border-top:1px solid rgba(0,255,170,0.25); padding-top:4px; display:flex; gap:10px; flex-wrap:wrap;">
           <span>🛰️ <span data-i18n="altLabel">高度</span>: <span id="val-alt">400.0</span> km</span>
           <span>⚡ <span data-i18n="rpyLabel">姿態(R/P/Y)</span>: <span id="val-rpy">0.0 / 0.0 / 0.0</span>°</span>
@@ -42,22 +38,19 @@
         </div>
       </div>
 
-      <!-- 控制按鈕組 -->
       <div class="btn-group interactive">
-        <button id="btn-diff" class="hud-btn" style="border-color:#ffaa00; color:#ffaa00;">🛠️ 進階模式</button>
-        <button id="btn-mode" class="hud-btn"><span data-i18n="modeBtn">模式: 自動</span></button>
-        <button id="btn-abort" class="hud-btn btn-abort"><span data-i18n="abortBtn">緊急中止</span></button>
-        <button id="btn-lang" class="hud-btn">EN / 繁中</button>
+        <button id="btn-diff" class="hud-btn interactive" style="border-color:#ffaa00; color:#ffaa00;">🛠️ 進階模式</button>
+        <button id="btn-mode" class="hud-btn interactive"><span data-i18n="modeBtn">模式: 自動</span></button>
+        <button id="btn-abort" class="hud-btn btn-abort interactive"><span data-i18n="abortBtn">緊急中止</span></button>
+        <button id="btn-lang" class="hud-btn interactive">EN / 繁中</button>
       </div>
     </div>
 
-    <!-- CBARS 十字光學瞄準具 -->
     <div id="crosshair-container">
       <div class="crosshair-circle"></div>
       <div id="crosshair-reticle" class="crosshair-reticle"></div>
     </div>
 
-    <!-- 底部虛擬雙搖桿 -->
     <div class="joystick-container">
       <div id="zone-trans" class="stick-zone interactive">
         <span class="stick-label" data-i18n="transLabel">RCS 平移 (X/Y)</span>
