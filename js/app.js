@@ -19,7 +19,6 @@ const fdir = new FDIRSystem();
 const sync = new TimeSynchronizer(0.5);
 const fsm = new MissionFSM();
 const engine = new SpacecraftEngine();
-// 🚀 修正：正確接收 beacons 與 rcsPlumes
 const { renderer, scene, camera, targetRingPos, earthShaderMat, clouds, beacons, rcsPlumes } = setupStationScene();
 const audio = new SpaceAudioManager();
 const impactFX = new ImpactFXManager(scene, camera);
@@ -52,16 +51,14 @@ let typeWriterTimeout = null;
 let missionStartTime = 0;
 let isMissionActive = false;
 
-// ==========================================
-// 🚀 極致優化：預先分配主迴圈所需的所有暫存變數 (Zero Allocation)
-// ==========================================
+// 預先分配變數 (Zero Allocation)
 const _rawThrust = new THREE.Vector3();
 const _rawTorque = new THREE.Vector3();
 const _deltaThrust = new THREE.Vector3();
 const _deltaTorque = new THREE.Vector3();
 const _screenPos = new THREE.Vector3();
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
-const _imuWrapper = { acc: null, gyro: null }; // 重複使用的物件包裝器
+const _imuWrapper = { acc: null, gyro: null }; 
 let currentActualThrust = new THREE.Vector3();
 let currentActualTorque = new THREE.Vector3();
 
@@ -100,12 +97,13 @@ function startNewMission() {
   isMissionActive = true;
   if(missionReport) missionReport.classList.add('hidden');
   
+  // 透過 i18n 獲取敘事
   if (fsm.difficulty === Difficulty.KID) {
-    playNarrative("Jarvis，準備好對接了嗎？交給你了！大膽推搖桿吧！");
+    playNarrative(i18n.t('narrKid'));
   } else if (fsm.difficulty === Difficulty.SCIENTIST) {
-    playNarrative("警告：輔助系統已離線。請全手動精確對接。");
+    playNarrative(i18n.t('narrSci'));
   } else {
-    playNarrative("指揮官，我是 J.A.R.，CW 導航已啟動，請控制接近率。");
+    playNarrative(i18n.t('narrPro'));
   }
 }
 
@@ -116,23 +114,27 @@ window.addEventListener('click', () => { if(!isMissionActive) startNewMission();
 // 難度仲裁系統 (CAS)
 let diffIndex = 1;
 const diffLevels = [Difficulty.KID, Difficulty.PRO, Difficulty.SCIENTIST];
-const diffLabels = ['🧒 兒童模式', '🛠️ 進階模式', '🔬 科學模式'];
+const diffKeys = ['diffKid', 'diffPro', 'diffSci'];
+
+// 初始設定動態按鈕的語言
+btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
+btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
 
 btnDiff.onclick = () => {
   diffIndex = (diffIndex + 1) % diffLevels.length;
   const currentDiff = diffLevels[diffIndex];
   fsm.setDifficulty(currentDiff);
-  btnDiff.textContent = diffLabels[diffIndex];
+  btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
   
   if (currentDiff === Difficulty.SCIENTIST) {
     btnDiff.style.borderColor = '#ff3344';
     btnDiff.style.color = '#ff3344';
-    btnMode.textContent = i18n.currentLang === 'zh-HK' ? '模式: 手動 (鎖定)' : 'MODE: MANUAL (LOCKED)';
+    btnMode.textContent = i18n.t('modeLocked');
     engine.thrustMultiplier = 1.0;
   } else {
     btnDiff.style.borderColor = '#ffaa00';
     btnDiff.style.color = '#ffaa00';
-    btnMode.textContent = i18n.currentLang === 'zh-HK' ? `模式: ${fsm.mode}` : `MODE: ${fsm.mode}`;
+    btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
   }
   audio.playRadioBeep();
   if(isMissionActive) startNewMission();
@@ -142,7 +144,7 @@ btnMode.onclick = () => {
   if (fsm.difficulty === Difficulty.SCIENTIST) return;
   const newMode = fsm.mode === MissionModes.AUTO ? MissionModes.MANUAL : MissionModes.AUTO;
   fsm.setMode(newMode);
-  btnMode.textContent = i18n.currentLang === 'zh-HK' ? `模式: ${newMode}` : `MODE: ${newMode}`;
+  btnMode.textContent = newMode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
   audio.playRadioBeep();
 };
 
@@ -156,18 +158,24 @@ btnAbort.onclick = () => {
 
 document.getElementById('btn-lang').onclick = () => {
   i18n.toggleLanguage();
-  btnMode.textContent = i18n.currentLang === 'zh-HK' ? `模式: ${fsm.mode}` : `MODE: ${fsm.mode}`;
+  // 強制更新非 HTML 的動態按鈕文字
+  btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
+  if (fsm.difficulty === Difficulty.SCIENTIST) {
+    btnMode.textContent = i18n.t('modeLocked');
+  } else {
+    btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
+  }
 };
 
 let eggClicks = 0;
 document.getElementById('title-tag').onclick = () => {
   if (fsm.difficulty === Difficulty.SCIENTIST) {
-    alert("🔬 [SCIENTIST MODE ACTIVE]\n科學模式已強制鎖定：禁止推力過載！");
+    alert(i18n.t('alertSci'));
     return;
   }
   eggClicks++;
   if (eggClicks === 3) {
-    alert("🦅 [CALLSIGN: FIRE BIRD UNLOCKED]\n已啟動「火鷹」特技飛行模式：RCS 推力限制解除！");
+    alert(i18n.t('alertBird'));
     engine.thrustMultiplier = 2.5;
     uiFsm.textContent = "FIRE BIRD OVERRIDE";
     audio.playRadioBeep();
@@ -182,7 +190,6 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const now = performance.now();
 
-  // In-place 向量賦值，消滅 new Vector3()
   _rawThrust.set(controls.transInput.x, 0, -controls.transInput.y);
   _rawTorque.set(controls.rotInput.y * 0.4, -controls.rotInput.x * 0.4, 0);
 
@@ -197,7 +204,6 @@ function animate() {
   const maxThrustRate = 3.5 * massRatio; 
   const maxTorqueRate = 4.0 * massRatio; 
 
-  // In-place 限幅運算
   _deltaThrust.subVectors(_rawThrust, currentActualThrust);
   if (_deltaThrust.lengthSq() > (maxThrustRate * dt) ** 2) {
     _deltaThrust.normalize().multiplyScalar(maxThrustRate * dt);
@@ -213,7 +219,6 @@ function animate() {
   const phys = engine.step(dt, currentActualThrust, currentActualTorque);
   const starQuat = fdir.voteStarSensors(phys.quat);
   
-  // 避免每幀新建 { acc, gyro } 物件
   _imuWrapper.acc = phys.accBody;
   _imuWrapper.gyro = engine.omega;
   sync.pushSample(now, _imuWrapper, phys.pos, starQuat);
@@ -227,7 +232,6 @@ function animate() {
   camera.position.copy(phys.pos);
   camera.quaternion.copy(mekf.qNominal);
 
-  // In-place 螢幕投影，消滅 clone()
   _screenPos.copy(targetRingPos).project(camera);
   const cx = (_screenPos.x * window.innerWidth) / 2;
   const cy = (-_screenPos.y * window.innerHeight) / 2;
@@ -259,12 +263,13 @@ function animate() {
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
+  // --- 失敗處理 ---
   if (fsmResult.statusKey === 'statusOverSpeed' && dist < fsm.dockingThreshold && !impactFX.isExploding && isMissionActive) {
     isMissionActive = false;
     audio.playExplosion();
-    playNarrative("結構應力過載... 任務失敗！", 3000);
+    playNarrative(i18n.t('narrFail'), 3000);
     
-    uiFsm.textContent = '💀 任務失敗 (MISSION FAILED)';
+    uiFsm.textContent = i18n.t('statusFail');
     uiFsm.style.color = '#ff3355';
     uiFsm.style.fontSize = '16px';
     uiFsm.style.fontWeight = 'bold';
@@ -278,10 +283,11 @@ function animate() {
     });
   }
 
+  // --- 成功結算 ---
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
     if(typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
-    playNarrative("對接機構鎖定。J.A.R. 祝賀您，任務圓滿成功。", 5000);
+    playNarrative(i18n.t('narrSuccess'), 5000);
     
     setTimeout(() => {
       const timeTaken = ((performance.now() - missionStartTime) / 1000).toFixed(1);
@@ -304,7 +310,6 @@ function animate() {
     }, 2000);
   }
 
-  // 🚀 整合：天宮心跳燈、動態雲層與 RCS 尾焰聯動 (Zero Allocation)
   if (earthShaderMat && earthShaderMat.uniforms.uTime) earthShaderMat.uniforms.uTime.value = now * 0.001;
   if (clouds) clouds.rotation.y += dt * 0.005;
 
