@@ -1,41 +1,149 @@
+/* css/mobile-style.css */
 * { box-sizing: border-box; touch-action: none; -webkit-user-select: none; user-select: none; }
-html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #020308; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; color: #00ffaa; }
+
+/* 1. 全域字體升級：改用等寬字體營造「代碼與儀表」的軍工質感 */
+html, body { 
+  width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; 
+  background: #020308; 
+  font-family: 'Courier New', Courier, monospace; /* 科幻儀表專用字體 */
+  color: #00ffaa; 
+}
 
 #webgl-canvas { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
 
-#hud-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 16px; }
+/* 2. 視覺欺騙術：CRT 螢幕微掃描線 (讓畫面看起來像是透過頭盔面罩觀看) */
+body::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px);
+  z-index: 5;
+  pointer-events: none; /* 絕對不能擋住觸控 */
+}
+
+#hud-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 14px; }
 .interactive { pointer-events: auto !important; cursor: pointer; }
 
 /* 頂部主飛行儀表 */
-.flight-director { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.primary-telemetry { background: rgba(2, 12, 24, 0.85); border: 1px solid #00ffaa; box-shadow: 0 0 12px rgba(0, 255, 170, 0.25); border-radius: 6px; padding: 10px 14px; }
-.pri-data-row { font-size: 14px; font-weight: bold; letter-spacing: 0.5px; color: #fff; text-shadow: 0 0 6px rgba(0, 255, 170, 0.8); }
+.flight-director { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+
+/* 3. AAA 級質感：高階玻璃擬態 (Glassmorphism) */
+.primary-telemetry { 
+  background: rgba(2, 12, 24, 0.65); 
+  backdrop-filter: blur(6px); /* 玻璃毛玻璃效果 */
+  -webkit-backdrop-filter: blur(6px); /* 兼容 Safari */
+  border: 1px solid rgba(0, 255, 170, 0.35); 
+  box-shadow: 0 0 20px rgba(0, 255, 170, 0.15), inset 0 0 15px rgba(0, 255, 170, 0.05); 
+  border-radius: 8px; 
+  padding: 10px 14px; 
+}
+
+.pri-data-row { font-size: 14px; font-weight: bold; letter-spacing: 1px; color: #fff; text-shadow: 0 0 8px rgba(0, 255, 170, 0.6); }
 .sec-data-row { font-size: 11px; opacity: 0.9; color: #00ffaa; margin-top: 4px; }
 
-/* 按鈕樣式 */
+/* 按鈕樣式 (增加科幻感與呼吸過渡) */
 .btn-group { display: flex; flex-direction: column; gap: 8px; }
 .hud-btn {
-  background: rgba(0, 30, 40, 0.8);
-  border: 1px solid #00ffaa;
+  background: rgba(0, 255, 170, 0.08);
+  border: 1px solid rgba(0, 255, 170, 0.4);
   color: #00ffaa;
   border-radius: 4px;
   padding: 8px 14px;
-  font-size: 12px;
+  font-size: 11px;
   font-family: inherit;
   font-weight: bold;
+  letter-spacing: 1px;
   pointer-events: auto;
+  transition: all 0.1s ease-in-out;
 }
-.hud-btn:active { background: #00ffaa; color: #000; }
-.btn-abort { border-color: #ff3344; color: #ff3344; }
-.btn-abort:active { background: #ff3344; color: #fff; }
+.hud-btn:active { background: #00ffaa; color: #020308; box-shadow: 0 0 15px #00ffaa; }
+.btn-abort { border-color: #ff3344; color: #ff3344; background: rgba(255, 51, 68, 0.08); }
+.btn-abort:active { background: #ff3344; color: #fff; box-shadow: 0 0 15px #ff3344; }
 
 /* CBARS 準心 */
-#crosshair-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; pointer-events: none; }
-.crosshair-circle { width: 100%; height: 100%; border: 1px dashed rgba(0, 255, 170, 0.4); border-radius: 50%; }
-.crosshair-reticle { position: absolute; top: 50%; left: 50%; width: 12px; height: 12px; border: 2px solid #00ff88; transform: translate(-50%, -50%); box-shadow: 0 0 8px #00ff88; }
+#crosshair-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90px; height: 90px; pointer-events: none; }
+.crosshair-circle { width: 100%; height: 100%; border: 1px solid rgba(0, 255, 170, 0.25); border-radius: 50%; box-shadow: inset 0 0 20px rgba(0, 255, 170, 0.1); }
+.crosshair-reticle { position: absolute; top: 50%; left: 50%; width: 12px; height: 12px; border: 2px solid #00ff88; transform: translate(-50%, -50%); box-shadow: 0 0 12px #00ff88; }
 
-/* 底部虛擬搖桿 */
-.joystick-container { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 8px; }
-.stick-zone { width: 110px; height: 110px; background: rgba(0, 20, 30, 0.5); border: 2px dashed rgba(0, 255, 170, 0.4); border-radius: 50%; position: relative; display: flex; justify-content: center; align-items: center; pointer-events: auto; }
-.stick-knob { width: 44px; height: 44px; background: rgba(0, 255, 170, 0.3); border: 2px solid #00ffaa; border-radius: 50%; position: absolute; transform: translate(0px, 0px); box-shadow: 0 0 8px rgba(0, 255, 170, 0.5); }
-.stick-label { position: absolute; top: -20px; font-size: 10px; color: #00ffaa; font-weight: bold; }
+/* 4. 搖桿升級：捨棄虛線，改用立體內陰影與漸層旋鈕 */
+.joystick-container { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 6px; }
+.stick-zone { 
+  width: 115px; height: 115px; 
+  background: rgba(0, 255, 170, 0.03); 
+  border: 1px solid rgba(0, 255, 170, 0.15); 
+  border-radius: 50%; position: relative; 
+  display: flex; justify-content: center; align-items: center; 
+  pointer-events: auto; 
+  box-shadow: inset 0 0 30px rgba(0,0,0,0.6); 
+}
+.stick-knob { 
+  width: 46px; height: 46px; 
+  background: radial-gradient(circle at 30% 30%, rgba(0,255,170,0.5), rgba(0,255,170,0.1)); 
+  border: 2px solid #00ffaa; 
+  border-radius: 50%; position: absolute; transform: translate(0px, 0px); 
+  box-shadow: 0 0 15px rgba(0, 255, 170, 0.4); 
+}
+.stick-label { position: absolute; top: -22px; font-size: 10px; color: #00ffaa; font-weight: bold; opacity: 0.7; letter-spacing: 1px; }
+
+/* ==========================================
+   5. 補齊 GOTY 級情感模組 UI (敘事字幕與結算)
+   ========================================== */
+
+/* J.A.R. AI 敘事字幕 */
+.narrative-box {
+  position: absolute;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 85%;
+  max-width: 600px;
+  background: rgba(2, 12, 24, 0.85);
+  backdrop-filter: blur(4px);
+  border-left: 4px solid #00ffaa;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #fff;
+  text-shadow: 0 0 5px rgba(0,255,170,0.5);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  border-radius: 2px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  z-index: 20;
+}
+.jar-tag { color: #00ffaa; font-weight: bold; margin-right: 8px; }
+
+/* 任務結算彈窗 */
+.modal-overlay {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+  pointer-events: auto;
+}
+.hidden { display: none !important; }
+.report-card {
+  background: rgba(5, 15, 30, 0.95);
+  border: 1px solid #00ffaa;
+  box-shadow: 0 0 35px rgba(0, 255, 170, 0.25);
+  padding: 24px;
+  border-radius: 6px;
+  width: 85%;
+  max-width: 360px;
+}
+.report-row { 
+  color: #fff; 
+  font-size: 14px; 
+  margin: 10px 0; 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  border-bottom: 1px solid rgba(0,255,170,0.15);
+  padding-bottom: 4px;
+}
