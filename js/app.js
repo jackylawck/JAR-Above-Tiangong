@@ -42,8 +42,80 @@ const btnDiff = document.getElementById('btn-diff');
 const btnMode = document.getElementById('btn-mode');
 const btnAbort = document.getElementById('btn-abort');
 
-// --- UI 動畫狀態變數 (Juice) ---
+// --- 新增：敘事與結算 UI ---
+const narrativeBox = document.getElementById('narrative-box');
+const narrativeText = document.getElementById('narrative-text');
+const missionReport = document.getElementById('mission-report');
+const btnRestart = document.getElementById('btn-restart');
+
+// UI 動畫狀態變數 (Juice)
 let displayRange = 80.0, displaySpeed = 0.15, displayFuel = 300.0;
+
+// ==========================================
+// 敘事引擎與任務管理 (J.A.R. AI)
+// ==========================================
+let typeWriterTimeout = null;
+let missionStartTime = 0;
+let isMissionActive = false;
+
+function playNarrative(text, duration = 4000) {
+  clearTimeout(typeWriterTimeout);
+  narrativeText.textContent = '';
+  if(narrativeBox) narrativeBox.style.opacity = 1;
+  
+  let i = 0;
+  function type() {
+    if (i < text.length) {
+      narrativeText.textContent += text.charAt(i);
+      i++;
+      setTimeout(type, 30);
+    } else {
+      typeWriterTimeout = setTimeout(() => {
+        if(narrativeBox) narrativeBox.style.opacity = 0;
+      }, duration);
+    }
+  }
+  type();
+}
+
+function startNewMission() {
+  // 隨機初始位置 (增加重玩挑戰性)
+  const randX = (Math.random() - 0.5) * 20;
+  const randZ = (Math.random() - 0.5) * 20;
+  engine.state = [randX, -80, randZ, 0, 0.15, 0];
+  engine.fuel = 300.0;
+  currentActualThrust.set(0, 0, 0);
+  currentActualTorque.set(0, 0, 0);
+  
+  // 隨機姿態微小擾動
+  engine.omega.set((Math.random()-0.5)*0.02, (Math.random()-0.5)*0.02, 0);
+  
+  missionStartTime = performance.now();
+  isMissionActive = true;
+  if(missionReport) missionReport.classList.add('hidden');
+  
+  // 難度專屬語音
+  if (fsm.difficulty === Difficulty.KID) {
+    playNarrative("Jarvis，準備好對接了嗎？交給你了！大膽推搖桿吧！");
+  } else if (fsm.difficulty === Difficulty.SCIENTIST) {
+    playNarrative("警告：輔助系統已離線。請全手動精確對接。");
+  } else {
+    playNarrative("指揮官，我是 J.A.R.，CW 導航已啟動，請控制接近率。");
+  }
+}
+
+// 綁定 UI 重啟按鈕
+if(btnRestart) {
+  btnRestart.onclick = () => {
+    audio.playRadioBeep();
+    startNewMission();
+  };
+}
+
+// 初始化第一次任務
+window.addEventListener('touchstart', () => { if(!isMissionActive) startNewMission(); }, {once: true});
+window.addEventListener('click', () => { if(!isMissionActive) startNewMission(); }, {once: true});
+
 
 // --- 難度仲裁系統 (CAS) ---
 let diffIndex = 1; // 預設 PRO
@@ -67,6 +139,7 @@ btnDiff.onclick = () => {
     btnMode.textContent = i18n.currentLang === 'zh-HK' ? `模式: ${fsm.mode}` : `MODE: ${fsm.mode}`;
   }
   audio.playRadioBeep();
+  if(isMissionActive) startNewMission(); // 切換難度自動重開任務
 };
 
 btnMode.onclick = () => {
@@ -120,11 +193,9 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const now = performance.now();
 
-  // 1. 取得玩家原始輸入
   const rawThrust = new THREE.Vector3(controls.transInput.x, 0, -controls.transInput.y);
   const rawTorque = new THREE.Vector3(controls.rotInput.y * 0.4, -controls.rotInput.x * 0.4, 0);
 
-  // 磁力吸附輔助
   const currentDist = engine.state[0]**2 + engine.state[1]**2 + engine.state[2]**2;
   if (fsm.assistMagnet && currentDist < 16.0 && fsm.mode !== MissionModes.ABORT) {
     rawThrust.x -= engine.state[0] * 0.05;
@@ -135,10 +206,8 @@ function animate() {
     rawThrust.set(0, 0, -1.0);
   }
 
-  // 2. RCS 閥門動態響應限制 (Rate Limiting)
   const totalMass = engine.massDry + engine.fuel;
   const massRatio = 3300.0 / totalMass; 
-  
   const maxThrustRate = 3.5 * massRatio; 
   const maxTorqueRate = 4.0 * massRatio; 
 
@@ -154,21 +223,17 @@ function animate() {
   }
   currentActualTorque.add(deltaTorque);
 
-  // 3. 推進物理引擎
   const phys = engine.step(dt, currentActualThrust, currentActualTorque);
 
-  // 4. 感測器採樣並送入時間同步緩存
   const starQuat = fdir.voteStarSensors(phys.quat);
   sync.pushSample(now, { acc: phys.accBody, gyro: engine.omega }, phys.pos, starQuat);
 
-  // 5. MEKF 狀態估計
   const syncdData = sync.getInterpolatedSample(now - 40);
   if (syncdData) {
     mekf.predict(dt, syncdData.gyro, syncdData.acc);
     mekf.update(syncdData.starQuat, syncdData.lidarPos, null, true, true);
   }
 
-  // 6. 視角更新與投影
   camera.position.copy(phys.pos);
   camera.quaternion.copy(mekf.qNominal);
 
@@ -177,12 +242,10 @@ function animate() {
   const cy = (-screenPos.y * window.innerHeight) / 2;
   reticle.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
 
-  // 7. 遙測數據計算
   const dist = phys.pos.length();
   const speed = phys.vel.length();
   const euler = new THREE.Euler().setFromQuaternion(mekf.qNominal, 'YXZ');
 
-  // --- AAA 級包裝：HUD 數值滾動動畫 (Lerp UI) ---
   const lerpUI = 0.12;
   displayRange += (dist - displayRange) * lerpUI;
   displaySpeed += (speed - displaySpeed) * lerpUI;
@@ -197,20 +260,24 @@ function animate() {
   uiOffset.textContent = Math.hypot(phys.pos.x, phys.pos.z).toFixed(2);
   uiCov.textContent = (mekf.P[0][0] + mekf.P[4][4]).toFixed(4);
 
-  // 8. 狀態機評估與碰撞處理
+  // --- 動態聲景更新 ---
+  if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') {
+    audio.updateAdaptiveMusic(dist);
+  }
+
   const fsmResult = fsm.evaluate(dist, speed);
   
-  // 當沒有在爆炸狀態時，才正常更新狀態字眼
-  if (!impactFX.isExploding) {
+  if (!impactFX.isExploding && isMissionActive) {
     uiFsm.textContent = i18n.t(fsmResult.statusKey);
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
-  // --- AAA 級包裝：碰撞失敗的情感過渡 (絕望凝視) ---
-  if (fsmResult.statusKey === 'statusOverSpeed' && dist < fsm.dockingThreshold && !impactFX.isExploding) {
+  // --- 失敗處理 ---
+  if (fsmResult.statusKey === 'statusOverSpeed' && dist < fsm.dockingThreshold && !impactFX.isExploding && isMissionActive) {
+    isMissionActive = false;
     audio.playExplosion();
+    playNarrative("結構應力過載... 任務失敗！", 3000);
     
-    // 立即將狀態鎖定為血紅色的任務失敗
     uiFsm.textContent = '💀 任務失敗 (MISSION FAILED)';
     uiFsm.style.color = '#ff3355';
     uiFsm.style.fontSize = '16px';
@@ -218,29 +285,59 @@ function animate() {
     uiFsm.className = ''; 
 
     impactFX.triggerCatastrophicFailure(phys.pos, () => {
-      // 在 3.2 秒爆炸結束後，再追加 2 秒的「絕望真空期」，然後才重啟
       setTimeout(() => {
-        engine.state = [0, -80, 0, 0, 0.15, 0];
-        engine.fuel = 300.0;
-        currentActualThrust.set(0, 0, 0);
-        currentActualTorque.set(0, 0, 0);
-        fsm.setMode(MissionModes.AUTO);
-        
-        // 還原 UI 樣式
         uiFsm.style.color = '';
         uiFsm.style.fontSize = '';
         uiFsm.style.fontWeight = '';
-        
-        audio.playRadioBeep();
+        startNewMission(); // 爆炸後自動重啟
       }, 2000);
     });
   }
 
-  // 9. 更新地球 GPU Shader 與雲層動態
+  // --- 成功結算 (Mission Report) ---
+  if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
+    isMissionActive = false;
+    if(typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
+    playNarrative("對接機構鎖定。J.A.R. 祝賀您，任務圓滿成功。", 5000);
+    
+    setTimeout(() => {
+      const timeTaken = ((performance.now() - missionStartTime) / 1000).toFixed(1);
+      const fuelLeft = phys.fuel.toFixed(1);
+      const errAngle = THREE.MathUtils.radToDeg(euler.x**2 + euler.y**2 + euler.z**2).toFixed(2);
+      
+      let grade = 'C';
+      if (fuelLeft > 250 && errAngle < 2.0) grade = 'S';
+      else if (fuelLeft > 200 && errAngle < 5.0) grade = 'A';
+      else if (fuelLeft > 100) grade = 'B';
+      
+      if(missionReport) {
+        document.getElementById('score-grade').textContent = grade;
+        document.getElementById('score-grade').style.color = grade === 'S' ? '#ffaa00' : (grade === 'A' ? '#00ffaa' : '#fff');
+        document.getElementById('score-time').textContent = timeTaken;
+        document.getElementById('score-fuel').textContent = fuelLeft;
+        document.getElementById('score-error').textContent = errAngle;
+        missionReport.classList.remove('hidden');
+      }
+    }, 2000);
+  }
+
+  // --- 動態環境渲染 ---
   if (earthShaderMat && earthShaderMat.uniforms.uTime) {
     earthShaderMat.uniforms.uTime.value = now * 0.001;
   }
   if (clouds) clouds.rotation.y += dt * 0.005;
+
+  // 終極 1%：太陽能板微重力顫動
+  scene.children.forEach(child => {
+    if (child.isGroup && child.children.length > 3) {
+      const panelL = child.children[child.children.length - 2];
+      const panelR = child.children[child.children.length - 1];
+      if (panelL && panelR && panelL.geometry.type === 'BoxGeometry') {
+        panelL.rotation.x = Math.sin(now * 0.0015) * 0.008;
+        panelR.rotation.x = Math.sin(now * 0.0015 + 1.2) * 0.008;
+      }
+    }
+  });
 
   impactFX.update(dt);
   renderer.render(scene, camera);
