@@ -2,19 +2,60 @@
 <html lang="zh-HK">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover">
   
-  <!-- PWA 全螢幕沉浸標籤 -->
+  <!-- PWA & 全螢幕沉浸標籤 -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="天宮之上3D">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#020308">
+  <meta name="application-name" content="J.A.R. 天宮之上 3D">
 
-  <title>J.A.R. 天宮之上 3D | Above Tiangong 3D</title>
+  <title>🛰️ J.A.R. 天宮之上 3D | JAR Above Tiangong 3D Space Docking Simulator</title>
+  
+  <!-- SEO Meta 策略標籤 -->
+  <meta name="description" content="J.A.R. 天宮之上 3D：基於 WebGL 與 Three.js 的零記憶體分配太空交會對接模擬器。具備真實 CW 軌道動力學、MEKF 擴展卡爾曼濾波、大氣暮光散射與電影級天宮空間站。">
+  <meta name="keywords" content="天宮空間站, 太空對接, WebGL, Three.js, GNC, 軌道力學, 航太模擬器, iOS PWA, Tiangong 3D, Space Docking">
+  <meta name="author" content="J.A.R. Aerospace Lab">
+  <meta name="robots" content="index, follow">
+
+  <!-- Open Graph / Facebook / WhatsApp 預覽 -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="🛰️ J.A.R. 天宮之上 3D | 航太級太空交會對接模擬器">
+  <meta property="og:description" content="硬核純代碼生成！體驗手動操控神舟飛船精確對接天宮空間站。">
+  <meta property="og:image" content="./jarAboveTiangong512icon.png">
+
+  <!-- Twitter Card 標籤 -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="J.A.R. 天宮之上 3D Space Docking Simulator">
+  <meta name="twitter:description" content="體驗 60FPS 零卡頓的純 WebGL 太空交會對接物理模擬。">
+  <meta name="twitter:image" content="./jarAboveTiangong512icon.png">
+
+  <!-- PWA 圖示與 Manifest 清單 -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="./jarAboveTiangong192icon.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="./jarAboveTiangong512icon.png">
+  <link rel="apple-touch-icon" href="./jarAboveTiangong192icon.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="./jarAboveTiangong512icon.png">
+
+  <!-- Google 結構化數據 (Schema.org) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "J.A.R. 天宮之上 3D",
+    "alternateName": "JAR Above Tiangong 3D",
+    "description": "高精度 3D 天宮空間站交會對接 WebGL 模擬器，支援手動 RCS 推進與自動 CW 軌道導航。",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "All",
+    "browserRequirements": "Requires WebGL support"
+  }
+  </script>
+
   <link rel="stylesheet" href="css/mobile-style.css">
   
-  <!-- 模組加載相容性 Polyfill -->
   <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
-
   <script type="importmap">
     {
       "imports": {
@@ -47,15 +88,14 @@
           <span><span data-i18n="fuelLabel">燃料</span>: <span id="val-fuel">300.0</span> kg</span>
         </div>
 
-        <div id="telem-stream" style="font-size:9px; opacity:0.75; margin-top:6px; border-top:1px solid rgba(0,255,170,0.25); padding-top:4px; display:flex; gap:10px; flex-wrap:wrap;">
+        <div id="telem-stream" style="font-size:9px; opacity:0.75; margin-top:6px; border-top:1px solid rgba(0,255,170,0.25); padding-top:4px; display:flex; gap:10px; flex-wrap:wrap; justify-content:space-between;">
           <span>🛰️ <span data-i18n="altLabel">高度</span>: <span id="val-alt">400.0</span> km</span>
           <span>⚡ <span data-i18n="rpyLabel">姿態(R/P/Y)</span>: <span id="val-rpy">0.0 / 0.0 / 0.0</span>°</span>
-          <span>🎯 <span data-i18n="offsetLabel">對接軸偏差</span>: <span id="val-offset">0.00</span> m</span>
-          <span>⏱️ <span data-i18n="covLabel">MEKF方差</span>: <span id="val-cov">0.0010</span></span>
+          <span>🎯 <span data-i18n="offsetLabel">偏差</span>: <span id="val-offset">0.00</span> m</span>
+          <span>🔄 <span data-i18n="progressLabel">接近進度</span>: <span id="val-progress" style="color:#00ffaa; font-weight:bold;">0%</span></span>
         </div>
       </div>
 
-      <!-- 控制按鈕組 -->
       <div class="btn-group interactive">
         <button id="btn-diff" class="hud-btn interactive" style="border-color:#ffaa00; color:#ffaa00;">🛠️ 進階模式</button>
         <button id="btn-mode" class="hud-btn interactive"><span data-i18n="modeBtn">模式: 自動</span></button>
@@ -101,21 +141,16 @@
     </div>
   </div>
 
-  <!-- 手勢防誤觸與縮放攔截 -->
   <script>
     let lastTouchEnd = 0;
     document.addEventListener('touchend', function (event) {
       const now = (new Date()).getTime();
-      if (now - lastTouchEnd <= 300) {
-        event.preventDefault();
-      }
+      if (now - lastTouchEnd <= 300) { event.preventDefault(); }
       lastTouchEnd = now;
     }, { passive: false });
 
     document.addEventListener('touchmove', function (event) {
-      if (event.touches.length > 1) {
-        event.preventDefault();
-      }
+      if (event.touches.length > 1) { event.preventDefault(); }
     }, { passive: false });
 
     document.addEventListener('dblclick', function (event) {
