@@ -164,11 +164,8 @@ function startNewMission() {
   const isKid = fsm.difficulty === Difficulty.KID;
   const startDist = isKid ? 35.0 : 80.0;
   
-  const randX = (Math.random() - 0.5) * (isKid ? 0.6 : 3.0);
-  const randY = (Math.random() - 0.5) * (isKid ? 0.6 : 3.0);
-  
-  engine.state[0] = randX;
-  engine.state[1] = randY;
+  engine.state[0] = 0; // 居中開局
+  engine.state[1] = 0;
   engine.state[2] = startDist;
   engine.state[3] = 0;
   engine.state[4] = 0;
@@ -282,10 +279,10 @@ function animate() {
     -controls.transInput.y * 3.5
   );
   
-  // 2. 姿態輸入映射：大幅提升力矩敏感度 (Pitch / Yaw)
+  // 2. 姿態輸入映射：調整為細膩線性的 0.45 係數
   _rawTorque.set(
-    controls.rotInput.y * 1.8,
-    -controls.rotInput.x * 1.8,
+    controls.rotInput.y * 0.45,
+    -controls.rotInput.x * 0.45,
     0
   );
 
@@ -294,12 +291,12 @@ function animate() {
   // 兒童模式自動輔助
   if (isKid && isMissionActive && fsm.mode !== MissionModes.ABORT) {
     if (Math.abs(controls.transInput.y) < 0.05 && engine.state[5] > -0.15) {
-      _rawThrust.z -= 0.5; // 自動微推力
+      _rawThrust.z -= 0.4;
     }
     // 磁吸對心
     if (currentDist < 25.0) {
-      _rawThrust.x -= engine.state[0] * 0.12;
-      _rawThrust.y -= engine.state[1] * 0.12;
+      _rawThrust.x -= engine.state[0] * 0.15;
+      _rawThrust.y -= engine.state[1] * 0.15;
     }
   }
 
@@ -307,7 +304,7 @@ function animate() {
 
   const massRatio = 3300.0 / (engine.massDry + engine.fuel); 
   const maxThrustRate = 5.0 * massRatio; 
-  const maxTorqueRate = 8.0 * massRatio; // 釋放角加速度響應限制
+  const maxTorqueRate = 4.0 * massRatio;
 
   _deltaThrust.subVectors(_rawThrust, currentActualThrust);
   if (_deltaThrust.lengthSq() > (maxThrustRate * dt) ** 2) {
@@ -323,10 +320,9 @@ function animate() {
 
   const phys = engine.step(dt, currentActualThrust, currentActualTorque);
   
-  // 姿態解算：直接採用物理實體姿態，消除濾波器對手動操控的平滑滯後
   mekf.qNominal.copy(phys.quat);
 
-  // 鏡頭抖動與位置同步
+  // 相機同步
   if (screenShake > 0.001) {
     camera.position.set(
       phys.pos.x + (Math.random() - 0.5) * screenShake,
@@ -339,7 +335,7 @@ function animate() {
   }
   camera.quaternion.copy(phys.quat);
 
-  // 準星與 HUD 投影
+  // 準星投影
   _screenPos.copy(targetRingPos).project(camera);
   const cx = (_screenPos.x * window.innerWidth) / 2;
   const cy = (-_screenPos.y * window.innerHeight) / 2;
