@@ -3,117 +3,83 @@ import * as THREE from 'three';
 
 export class SpacecraftEngine {
   constructor() {
-    this.GM = 3.986e14;
-    this.n = Math.sqrt(this.GM / Math.pow(6371000 + 400000, 3));
-    
-    // Float64Array 加速底層記憶體存取
-    this.state = new Float64Array([0, -80, 0, 0, 0.15, 0]);
-    
-    // 修正：初始姿態繞 Y 軸旋轉 180 度，機頭對準 +Z 軸的空間站
-    this.qActual = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
-    
-    this.omega = new THREE.Vector3();
-    this.fuel = 300.0;
     this.massDry = 3000.0;
-    this.thrustMultiplier = 1.0;
-    
-    // 預先計算平方值
-    this.maxOmega = 1.2; 
-    this.maxOmegaSq = this.maxOmega * this.maxOmega;
-    this.maxSingleNozzleThrust = 50.0;
+    this.fuel = 300.0;
+    this.thrustMultiplier = 6.0; // 預設兒童模式 6 倍推力
+    this.Isp = 220.0;
+    this.g0 = 9.80665;
+    this.meanMotion = 0.00113; // 400km 軌道角速度 n
 
-    // ==========================================
-    // 極致優化：預先分配所有暫存變數 (Zero Allocation)
-    // ==========================================
-    this._tempThrust = new THREE.Vector3();
-    this._tempTorque = new THREE.Vector3();
-    this._tempAxis = new THREE.Vector3();
-    this._deltaQ = new THREE.Quaternion();
-    this._orbitThrust = new THREE.Vector3();
-    
-    // 預先分配回傳物件
-    this.outState = {
-      pos: new THREE.Vector3(),
-      vel: new THREE.Vector3(),
-      quat: this.qActual, // 傳遞參照
-      fuel: this.fuel,
-      mass: this.massDry + this.fuel,
-      accBody: this._orbitThrust
-    };
+    // 🚀 關鍵修復：底層直接預設 35 米開局 (Y = -35.0)
+    this.state = new Float64Array([0, -35.0, 0, 0, 0.35, 0]);
+    this.omega = new THREE.Vector3(0, 0, 0);
+    this.quat = new THREE.Quaternion();
+    this.moi = new THREE.Vector3(2500, 2500, 1800);
+    this.accBody = new THREE.Vector3();
   }
 
   step(dt, thrustCmd, torqueCmd) {
     const totalMass = this.massDry + this.fuel;
-    const invMass = 1.0 / totalMass; 
-
-    // --- 推力向量限幅 (In-place) ---
-    this._tempThrust.copy(thrustCmd);
-    const thrustSq = this._tempThrust.lengthSq(); 
-    if (thrustSq > 1.0) {
-      this._tempThrust.normalize();
-    }
-    const thrustMagRaw = thrustSq > 1.0 ? 1.0 : Math.sqrt(thrustSq);
-    const actualThrustMag = thrustMagRaw * this.maxSingleNozzleThrust * this.thrustMultiplier;
-
-    if (actualThrustMag > 0.01 && this.fuel > 0) {
-      this.fuel = Math.max(0, this.fuel - (actualThrustMag / 2941.995) * dt);
+    
+    // 平移推力換算
+    const appliedThrust = thrustCmd.clone().multiplyScalar(this.thrustMultiplier * 200.0);
+    const thrustMag = appliedThrust.length();
+    
+    // 燃料消耗計算
+    if (thrustMag > 0 && this.fuel > 0) {
+      const mDot = thrustMag / (this.Isp * this.g0);
+      this.fuel = Math.max(0, this.fuel - mDot * dt);
     }
 
-    // --- 姿態動力學更新 (In-place) ---
-    this._tempTorque.copy(torqueCmd).multiplyScalar(this.thrustMultiplier * dt);
-    this.omega.add(this._tempTorque).multiplyScalar(0.96);
+    // 機體加速度
+    this.accBody.copy(appliedThrust).divideScalar(totalMass);
 
-    const omegaSq = this.omega.lengthSq();
-    if (omegaSq > this.maxOmegaSq) {
-      this.omega.normalize().multiplyScalar(this.maxOmega);
-    }
+    // CW 軌道動力學方程步進
+    const n = this.meanMotion;
+    const x = this.state[0], y = this.state[1], z = this.state[2];
+    const vx = this.state[3], vy = this.state[4], vz = this.state[5];
 
-    // --- 軸角指數映射四元數積分 (In-place) ---
-    const omegaMag = this.omega.length();
-    const rotAngle = omegaMag * dt;
+    // 機體坐標系推力旋轉至軌道坐標系
+    const thrustWorld = appliedThrust.clone().applyQuaternion(this.quat);
+    const ax = thrustWorld.x / totalMass;
+    const ay = thrustWorld.y / totalMass;
+    const az = thrustWorld.z / totalMass;
 
-    if (rotAngle > 1e-6) {
-      this._tempAxis.copy(this.omega).divideScalar(omegaMag);
-      this._deltaQ.setFromAxisAngle(this._tempAxis, rotAngle);
-    } else {
-      this._deltaQ.set(0.5 * this.omega.x * dt, 0.5 * this.omega.y * dt, 0.5 * this.omega.z * dt, 1.0).normalize();
-    }
-    this.qActual.multiply(this._deltaQ).normalize();
+    // CW 微分方程
+    const xDotDot = 2 * n * vy + 3 * n * n * x + ax;
+    const yDotDot = -2 * n * vx + ay;
+    const zDotDot = -n * n * z + az;
 
-    // --- 軌道動力學 (CW 解析解步進) ---
-    this._orbitThrust.copy(this._tempThrust)
-      .applyQuaternion(this.qActual)
-      .multiplyScalar(actualThrustMag * invMass); 
+    // 數值積分
+    this.state[3] += xDotDot * dt;
+    this.state[4] += yDotDot * dt;
+    this.state[5] += zDotDot * dt;
 
-    // 🏆 終極優化：捨棄 ES6 解構賦值，改用直接索引存取，徹底消滅 Iterator 產生的 GC！
-    const x0 = this.state[0];
-    const y0 = this.state[1];
-    const z0 = this.state[2];
-    const vx0 = this.state[3];
-    const vy0 = this.state[4];
-    const vz0 = this.state[5];
+    this.state[0] += this.state[3] * dt;
+    this.state[1] += this.state[4] * dt;
+    this.state[2] += this.state[5] * dt;
 
-    const nt = this.n * dt;
-    const s = Math.sin(nt), c = Math.cos(nt);
-    const invN = 1.0 / this.n;
+    // 姿態角速度與四元數步進
+    const appliedTorque = torqueCmd.clone().multiplyScalar(this.thrustMultiplier * 80.0);
+    this.omega.x += (appliedTorque.x / this.moi.x) * dt;
+    this.omega.y += (appliedTorque.y / this.moi.y) * dt;
+    this.omega.z += (appliedTorque.z / this.moi.z) * dt;
+    this.omega.multiplyScalar(0.96); // 微重力阻尼
 
-    const x = (4 - 3*c)*x0 + (s * invN)*vx0 + (2 * invN)*(1-c)*vy0;
-    const y = 6*(s - nt)*x0 + y0 - (2 * invN)*(1-c)*vx0 + ((4*s - 3*nt) * invN)*vy0;
-    const z = z0*c + (vz0 * invN)*s;
+    const deltaQ = new THREE.Quaternion(
+      this.omega.x * dt * 0.5,
+      this.omega.y * dt * 0.5,
+      this.omega.z * dt * 0.5,
+      1.0
+    ).normalize();
+    this.quat.multiply(deltaQ).normalize();
 
-    const vx = 3*this.n*s*x0 + c*vx0 + 2*s*vy0 + this._orbitThrust.x * dt;
-    const vy = 6*this.n*(c - 1)*x0 - 2*s*vx0 + (4*c - 3)*vy0 + this._orbitThrust.y * dt;
-    const vz = -z0*this.n*s + vz0*c + this._orbitThrust.z * dt;
-
-    this.state[0] = x; this.state[1] = y; this.state[2] = z;
-    this.state[3] = vx; this.state[4] = vy; this.state[5] = vz;
-
-    // --- 更新快取回傳物件 (Zero Allocation) ---
-    this.outState.pos.set(x, z, y);
-    this.outState.vel.set(vx, vz, vy);
-    this.outState.fuel = this.fuel;
-    this.outState.mass = totalMass;
-
-    return this.outState;
+    return {
+      pos: new THREE.Vector3(this.state[0], this.state[1], this.state[2]),
+      vel: new THREE.Vector3(this.state[3], this.state[4], this.state[5]),
+      quat: this.quat,
+      accBody: this.accBody,
+      fuel: this.fuel
+    };
   }
 }
