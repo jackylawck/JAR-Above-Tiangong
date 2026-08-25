@@ -2,11 +2,20 @@
 <html lang="zh-HK">
 <head>
   <meta charset="UTF-8">
+  <!-- AAA 優化：徹底鎖死視窗縮放，防止雙指操作時畫面意外放大 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  
+  <!-- AAA 優化：Web App 全螢幕沉浸模式 (可將網頁加入主畫面，隱藏 Safari 網址列) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#020308">
+
   <title>J.A.R. 天宮之上 3D | Above Tiangong 3D</title>
   <link rel="stylesheet" href="css/mobile-style.css">
   
-  <!-- 核心修復：使用 Import Map 讓瀏覽器正確解析 ES Module 的 'three' -->
+  <!-- AAA 優化：相容舊版 iOS/Android 瀏覽器的 Import Map Polyfill -->
+  <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+
   <script type="importmap">
     {
       "imports": {
@@ -15,7 +24,9 @@
     }
   </script>
 </head>
-<body>
+
+<!-- AAA 優化：overscroll-behavior 封殺下拉更新，oncontextmenu 封殺長按右鍵選單 -->
+<body oncontextmenu="return false;" style="overscroll-behavior: none;">
   <canvas id="webgl-canvas"></canvas>
 
   <div id="hud-overlay">
@@ -74,13 +85,13 @@
       </div>
     </div>
 
-    <!-- 核心修復：J.A.R. 敘事字幕框 (防止 app.js 報錯) -->
+    <!-- J.A.R. 敘事字幕框 -->
     <div id="narrative-box" class="narrative-box">
       <span class="jar-tag">J.A.R.</span>
       <span id="narrative-text">系統初始化中...</span>
     </div>
 
-    <!-- 核心修復：任務結算畫面 (防止 app.js 報錯) -->
+    <!-- 任務結算畫面 -->
     <div id="mission-report" class="modal-overlay hidden">
       <div class="report-card">
         <h2 style="color:#00ffaa; margin:0 0 10px 0; border-bottom:1px solid #00ffaa; padding-bottom:5px;">任務結算 (REPORT)</h2>
