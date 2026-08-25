@@ -20,7 +20,7 @@ const fsm = new MissionFSM();
 const engine = new SpacecraftEngine();
 const { 
   renderer, scene, camera, targetRingPos, 
-  earthShaderMat, clouds, clouds2, beacons, rcsPlumes, wings, corona 
+  earthShaderMat, clouds, clouds2, beacons, rcsPlumes, wings, corona, station 
 } = setupStationScene();
 const audio = new SpaceAudioManager();
 const impactFX = new ImpactFXManager(scene, camera);
@@ -141,12 +141,10 @@ let currentNarrativeKey = null;
 function playNarrative(key, duration = 4000) {
   currentNarrativeKey = key;
   const text = i18n.t(key);
-  
   clearTimeout(typeWriterTimeout);
   clearTimeout(typeWriterTick);
   narrativeText.textContent = '';
   if(narrativeBox) narrativeBox.style.opacity = 1;
-  
   let i = 0;
   function type() {
     if (i < text.length) {
@@ -171,10 +169,10 @@ function startNewMission() {
   
   engine.state[0] = randX;
   engine.state[1] = randY;
-  engine.state[2] = startDist; // 飛船在 +Z 處
+  engine.state[2] = startDist;
   engine.state[3] = 0;
   engine.state[4] = 0;
-  engine.state[5] = isKid ? -0.25 : -0.15; // 自動朝 -Z 方向前進
+  engine.state[5] = isKid ? -0.25 : -0.15;
   
   engine.quat.set(0, 0, 0, 1);
   mekf.qNominal.set(0, 0, 0, 1);
@@ -189,18 +187,13 @@ function startNewMission() {
   fwMat.opacity = 0;
   if(missionReport) missionReport.classList.add('hidden');
   
-  if (isKid) {
-    playNarrative('narrKid');
-  } else if (fsm.difficulty === Difficulty.SCIENTIST) {
-    playNarrative('narrSci');
-  } else {
-    playNarrative('narrPro');
-  }
+  if (isKid) playNarrative('narrKid');
+  else if (fsm.difficulty === Difficulty.SCIENTIST) playNarrative('narrSci');
+  else playNarrative('narrPro');
 }
 
 if(btnRestart) btnRestart.onclick = () => { audio.playRadioBeep(); startNewMission(); };
 
-// 初始化兒童模式
 let diffIndex = 0;
 const diffLevels = [Difficulty.KID, Difficulty.PRO, Difficulty.SCIENTIST];
 const diffKeys = ['diffKid', 'diffPro', 'diffSci'];
@@ -260,7 +253,6 @@ document.getElementById('btn-lang').onclick = () => {
     btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
   }
   updateCollapseButtonText();
-
   if (currentNarrativeKey && narrativeBox.style.opacity == 1) {
     clearTimeout(typeWriterTick);
     narrativeText.textContent = i18n.t(currentNarrativeKey);
@@ -292,33 +284,29 @@ function animate() {
 
   const isKid = fsm.difficulty === Difficulty.KID;
 
-  // 搖桿推力映射
+  // 搖桿推力映射 (平移與姿態)
   _rawThrust.set(
     controls.transInput.x * (isKid ? 2.5 : 1.0),
     controls.transInput.y * (isKid ? 2.5 : 1.0),
     0
   );
   
-  // 姿態手感細膩，不劇烈偏轉
   _rawTorque.set(
-    controls.rotInput.y * 0.12,
-    -controls.rotInput.x * 0.12,
+    controls.rotInput.y * 0.15,
+    -controls.rotInput.x * 0.15,
     0
   );
 
   const currentDist = Math.hypot(engine.state[0], engine.state[1], engine.state[2] - targetRingPos.z);
 
-  // 🚀 兒童模式必中磁吸與自動巡航
+  // 兒童模式自動巡航與磁吸
   if (isKid && isMissionActive && fsm.mode !== MissionModes.ABORT) {
-    // 1. 自動巡航：若無向下推煞車，保持平穩前進速度
     if (controls.transInput.y >= -0.1 && engine.state[5] > -0.2) {
-      _rawThrust.z = -0.5;
+      _rawThrust.z = -0.6;
     }
-    // 2. 自動對心磁吸：接近時強制將 X/Y 偏離拉回中心
     if (currentDist < 25.0) {
       _rawThrust.x -= engine.state[0] * 0.15;
       _rawThrust.y -= engine.state[1] * 0.15;
-      // 姿態自動回正
       mekf.qNominal.slerp(new THREE.Quaternion(0, 0, 0, 1), 0.04);
     }
   }
@@ -327,7 +315,7 @@ function animate() {
 
   const massRatio = 3300.0 / (engine.massDry + engine.fuel); 
   const maxThrustRate = 3.5 * massRatio; 
-  const maxTorqueRate = 1.8 * massRatio;
+  const maxTorqueRate = 2.0 * massRatio;
 
   _deltaThrust.subVectors(_rawThrust, currentActualThrust);
   if (_deltaThrust.lengthSq() > (maxThrustRate * dt) ** 2) {
@@ -354,7 +342,6 @@ function animate() {
     mekf.update(syncdData.starQuat, syncdData.lidarPos, null, true, true);
   }
 
-  // 相機追蹤飛船
   if (screenShake > 0.001) {
     camera.position.set(
       phys.pos.x + (Math.random() - 0.5) * screenShake,
@@ -367,7 +354,6 @@ function animate() {
   }
   camera.quaternion.copy(mekf.qNominal);
 
-  // 綠色瞄準具投影
   _screenPos.copy(targetRingPos).project(camera);
   const cx = (_screenPos.x * window.innerWidth) / 2;
   const cy = (-_screenPos.y * window.innerHeight) / 2;
@@ -415,7 +401,6 @@ function animate() {
 
   if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(distToRing);
 
-  // 衝過頭與對接判定
   const fsmResult = fsm.evaluate(distToRing, speed, -phys.pos.z);
   
   if (!impactFX.isExploding && isMissionActive) {
@@ -486,21 +471,31 @@ function animate() {
     if (fireworkTimer > 2.5) isFireworksActive = false;
   }
 
-  if (clouds) clouds.rotation.y += dt * 0.003;
-  if (clouds2) clouds2.rotation.y += dt * 0.007;
+  // 🚀 地球著色器時間更新（驅動城市燈光與地球自轉）
   if (earthShaderMat && earthShaderMat.uniforms.uTime) {
-    earthShaderMat.uniforms.uTime.value = now * 0.001;
+    earthShaderMat.uniforms.uTime.value = now * 0.0003;
   }
+  if (clouds) clouds.rotation.y += dt * 0.004;
+  if (clouds2) clouds2.rotation.y += dt * 0.008;
+
+  // 🚀 太陽日冕脈動呼吸
   if (corona) {
-    const pulse = 180 + Math.sin(now / 1400) * 14;
-    corona.scale.set(pulse, pulse, 1);
+    const pulse = 1.0 + 0.06 * Math.sin(now / 1500);
+    corona.scale.set(180 * pulse, 180 * pulse, 1);
   }
+
+  // 空間站微振動
+  if (station) {
+    station.rotation.y = Math.sin(now * 0.0005) * 0.002;
+  }
+
   if (beacons) {
     const phase = Math.sin(now / 650) > 0;
     for (let i = 0; i < beacons.length; i++) {
       beacons[i].material.emissiveIntensity = (i % 2 === 0) ? (phase ? 2.8 : 0.05) : (phase ? 0.05 : 2.8);
     }
   }
+  
   if (rcsPlumes) {
     const tx = controls.transInput.x;
     const ty = controls.transInput.y;
@@ -508,11 +503,6 @@ function animate() {
     if (rcsPlumes.right) rcsPlumes.right.material.opacity = Math.max(0, tx * 0.9);
     if (rcsPlumes.up) rcsPlumes.up.material.opacity = Math.max(0, -ty * 0.9);
     if (rcsPlumes.down) rcsPlumes.down.material.opacity = Math.max(0, ty * 0.9);
-  }
-  if (wings) {
-    for (let i = 0; i < wings.length; i++) {
-      wings[i].rotation.x = Math.sin(now * 0.0015 + i * 1.2) * 0.006;
-    }
   }
 
   impactFX.update(dt);
