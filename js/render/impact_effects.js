@@ -11,7 +11,14 @@ export class ImpactFXManager {
     // 120 條高溫金屬拉絲線段 (共 240 個頂點)
     this.particleCount = 120;
     this.positions = new Float32Array(this.particleCount * 6);
-    this.velocities = [];
+    
+    // ==========================================
+    // 極致優化：預先分配所有速度向量 (Zero Allocation)
+    // ==========================================
+    this.velocities = new Array(this.particleCount);
+    for (let i = 0; i < this.particleCount; i++) {
+      this.velocities[i] = new THREE.Vector3();
+    }
 
     this.geo = new THREE.BufferGeometry();
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
@@ -34,8 +41,6 @@ export class ImpactFXManager {
     this.shakeIntensity = 0.9;
     this.mat.opacity = 1.0;
 
-    // 優化 1：每次爆炸隨機生成全新的爆炸方向與初速度
-    this.velocities = [];
     const pos = this.geo.attributes.position.array;
 
     for (let i = 0; i < this.particleCount; i++) {
@@ -44,11 +49,12 @@ export class ImpactFXManager {
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
       
-      this.velocities.push(new THREE.Vector3(
+      // 優化 1：In-place 更新，絕不使用 new THREE.Vector3
+      this.velocities[i].set(
         speed * Math.sin(phi) * Math.cos(theta),
         speed * Math.sin(phi) * Math.sin(theta),
         speed * Math.cos(phi)
-      ));
+      );
 
       // 起點與終點重合於撞擊點
       const idx = i * 6;
@@ -66,7 +72,7 @@ export class ImpactFXManager {
   }
 
   update(dt) {
-    // 優化 2：多軸向劇烈鏡頭晃動 + 輕微 Roll 滾轉
+    // 多軸向劇烈鏡頭晃動 + 輕微 Roll 滾轉
     if (this.shakeIntensity > 0.001) {
       this.camera.position.x += (Math.random() - 0.5) * this.shakeIntensity;
       this.camera.position.y += (Math.random() - 0.5) * this.shakeIntensity;
@@ -74,7 +80,7 @@ export class ImpactFXManager {
       this.shakeIntensity *= 0.90; // 指數衰減
     }
 
-    // 優化 3：拉絲破片飛行與長度動態延展
+    // 拉絲破片飛行與長度動態延展
     if (this.isExploding) {
       const pos = this.geo.attributes.position.array;
       for (let i = 0; i < this.particleCount; i++) {
