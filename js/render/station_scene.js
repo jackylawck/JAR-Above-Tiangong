@@ -154,7 +154,7 @@ export function setupStationScene() {
   earth.position.set(0, -420, -50);
   scene.add(earth);
 
-  // 4. 動態雲層 (使用 2D Canvas 生成基礎噪聲，交由 app.js 驅動自轉)
+  // 4. 動態雲層 (已修復 SyntaxError 致命 Bug)
   function generateCloudTexture() {
     const c = document.createElement('canvas');
     c.width = 1024; c.height = 512;
@@ -163,7 +163,9 @@ export function setupStationScene() {
       for (let x = 0; x < 1024; x+=4) {
         const val = Math.sin(x*0.02) * Math.cos(y*0.02) + Math.sin((x+y)*0.01);
         const alpha = Math.max(0, Math.min(1, (val * 0.5 + 0.5) * 1.5 - 0.5));
-        ctx.fillStyle = \`rgba(255, 255, 255, \${alpha * 0.8})\`;
+        
+        // 這是唯一正確的模板字串寫法，絕不能有反斜線！
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.8})`; 
         ctx.fillRect(x, y, 4, 4);
       }
     }
@@ -220,7 +222,6 @@ export function setupStationScene() {
   const goldMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.15 });
   const solarMat = new THREE.MeshStandardMaterial({ color: 0x051a33, metalness: 0.98, roughness: 0.05 });
 
-  // 輔助函數：為幾何體加上螢光藍線框
   function addGlowEdges(mesh) {
     const edges = new THREE.EdgesGeometry(mesh.geometry);
     const lineMat = new THREE.LineBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0.3 });
@@ -253,6 +254,5 @@ export function setupStationScene() {
 
   scene.add(station);
 
-  // 核心修復：正確回傳所有 app.js 依賴的物件
   return { renderer, scene, camera, targetRingPos: new THREE.Vector3(0, 0, 9.5), earthShaderMat, clouds };
 }
