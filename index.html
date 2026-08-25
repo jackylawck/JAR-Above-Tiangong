@@ -11,26 +11,14 @@
   <meta name="theme-color" content="#020308">
   <meta name="application-name" content="J.A.R. 天宮之上 3D">
 
-  <title>🛰️ J.A.R. 天宮之上 3D | Above Tiangong 3D Space Docking Simulator</title>
+  <title>🛰️ J.A.R. 天宮之上 3D | Above Tiangong 3D</title>
   
-  <meta name="description" content="J.A.R. 天宮之上 3D：基於 WebGL 與 Three.js 的零記憶體分配太空交會對接模擬器。具備真實 CW 軌道動力學、MEKF 擴展卡爾曼濾波、大氣暮光散射與電影級天宮空間站。">
-  <meta name="keywords" content="天宮空間站, 太空對接, WebGL, Three.js, GNC, 軌道力學, 航太模擬器, iOS PWA, Tiangong 3D, Space Docking">
-  <meta name="author" content="J.A.R. Aerospace Lab">
-  <meta name="robots" content="index, follow">
-
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="🛰️ J.A.R. 天宮之上 3D | 航太級太空交會對接模擬器">
-  <meta property="og:description" content="體驗 60FPS 零卡頓的純 WebGL 太空交會對接物理模擬。">
-  <meta property="og:image" content="./jarAboveTiangong512icon.png">
-
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="./jarAboveTiangong192icon.png">
   <link rel="icon" type="image/png" sizes="512x512" href="./jarAboveTiangong512icon.png">
   <link rel="apple-touch-icon" href="./jarAboveTiangong192icon.png">
-  <link rel="apple-touch-icon" sizes="512x512" href="./jarAboveTiangong512icon.png">
 
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-  <link rel="stylesheet" href="css/mobile-style.css?v=6.0">
+  <link rel="stylesheet" href="css/mobile-style.css?v=8.0">
   
   <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
   <script type="importmap">
@@ -45,13 +33,12 @@
   <canvas id="webgl-canvas"></canvas>
 
   <div id="hud-overlay">
-    <!-- 頂部主飛行儀表組 -->
     <div class="flight-director">
       <div id="telemetry-panel" class="primary-telemetry interactive">
         <div class="pri-data-row" style="cursor: pointer;" id="panel-toggle-header">
           <span id="title-tag">
             <span data-i18n="appTitle">J.A.R. 天宮之上 3D</span>
-            <span style="font-size:9px; opacity:0.6;">[V6.0]</span>
+            <span style="font-size:9px; opacity:0.6;">[V8.0]</span>
           </span>
           <span id="btn-collapse" style="font-size: 11px; color:#00ffaa; opacity:0.85;">🔼 摺疊</span>
         </div>
@@ -82,7 +69,7 @@
       </div>
     </div>
 
-    <!-- CBARS 十字光學瞄準具 -->
+    <!-- CBARS 瞄準具 -->
     <div id="crosshair-container">
       <div class="crosshair-circle"></div>
       <div id="crosshair-reticle" class="crosshair-reticle"></div>
@@ -119,16 +106,6 @@
     </div>
   </div>
 
-  <script>
-    // 移除全局 touchmove 攔截，交由 CSS touch-action 控制
-    let lastTouchEnd = 0;
-    document.addEventListener('touchend', function (event) {
-      const now = (new Date()).getTime();
-      if (now - lastTouchEnd <= 300) { event.preventDefault(); }
-      lastTouchEnd = now;
-    }, { passive: false });
-  </script>
-
-  <script type="module" src="js/app.js?v=7.3"></script>
+  <script type="module" src="js/app.js?v=8.0"></script>
 </body>
 </html>
