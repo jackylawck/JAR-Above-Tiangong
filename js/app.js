@@ -55,9 +55,9 @@ let missionStartTime = performance.now();
 let isMissionActive = true;
 let isPanelCollapsed = false;
 
-// 姿態平滑變量 (Pitch & Yaw)
-let currentPitch = 0.0;
-let currentYaw = 0.0;
+// 累計姿態角度 (Pitch & Yaw)
+let accumulatedPitch = 0.0;
+let accumulatedYaw = 0.0;
 
 function updateCollapseButtonText() {
   if (!btnCollapse) return;
@@ -179,8 +179,8 @@ function startNewMission() {
   engine.state[4] = 0;
   engine.state[5] = isKid ? -0.25 : -0.15;
   
-  currentPitch = 0.0;
-  currentYaw = 0.0;
+  accumulatedPitch = 0.0;
+  accumulatedYaw = 0.0;
   engine.quat.set(0, 0, 0, 1);
   mekf.qNominal.set(0, 0, 0, 1);
   engine.omega.set(0, 0, 0);
@@ -272,11 +272,11 @@ document.getElementById('title-tag').onclick = (e) => {
 };
 
 // ==========================================
-// 系統主迴圈 (Main Pipeline Loop - Zero GC & 120Hz Smooth)
+// 系統主迴圈 (Main Pipeline Loop)
 // ==========================================
 function animate() {
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.033); // 限制單幀最大時間步長
+  const dt = Math.min(clock.getDelta(), 0.033);
   const now = performance.now();
 
   const isKid = fsm.difficulty === Difficulty.KID;
@@ -288,20 +288,22 @@ function animate() {
     -controls.transInput.y * 3.5
   );
 
-  // 🚀 2. 絕對姿態映射（徹底根治轉飛！推到盡最多偏 12 度，鬆手 0.2 秒精準回正）
+  // 🚀 2. 姿態控制：速率積分模式（推時平穩轉動，放手停在當前位置，限制最大視角防轉丟）
   if (isMissionActive) {
-    const maxAngleRad = isKid ? (12 * Math.PI / 180) : (22 * Math.PI / 180); // 偏轉極限
-    const targetPitch = controls.rotInput.y * maxAngleRad; // 向上推抬頭
-    const targetYaw = -controls.rotInput.x * maxAngleRad;  // 向左推向左看
+    if (controls.isRotActive) {
+      const rotSpeed = isKid ? 0.35 : 0.6; // 轉向速度
+      accumulatedPitch += controls.rotInput.y * rotSpeed * dt;
+      accumulatedYaw -= controls.rotInput.x * rotSpeed * dt;
 
-    // 平滑追隨目標角度 (彈簧阻尼平滑)
-    const smoothFactor = controls.isRotActive ? 0.25 : 0.15;
-    currentPitch += (targetPitch - currentPitch) * smoothFactor;
-    currentYaw += (targetYaw - currentYaw) * smoothFactor;
+      // 限制偏轉安全範圍（最多偏 25 度，防止轉到背後）
+      const maxLimit = (isKid ? 18 : 28) * (Math.PI / 180);
+      accumulatedPitch = THREE.MathUtils.clamp(accumulatedPitch, -maxLimit, maxLimit);
+      accumulatedYaw = THREE.MathUtils.clamp(accumulatedYaw, -maxLimit, maxLimit);
+    }
 
-    _euler.set(currentPitch, currentYaw, 0, 'YXZ');
+    _euler.set(accumulatedPitch, accumulatedYaw, 0, 'YXZ');
     engine.quat.setFromEuler(_euler);
-    engine.omega.set(0, 0, 0); // 消除殘留無效角速度
+    engine.omega.set(0, 0, 0);
   }
 
   // 立體聲 RCS 音效
@@ -392,7 +394,7 @@ function animate() {
   uiRate.textContent = displaySpeed.toFixed(2);
   uiFuel.textContent = displayFuel.toFixed(1);
   uiAlt.textContent = (400 + (35 - phys.pos.z) / 1000).toFixed(1);
-  uiRpy.textContent = `${THREE.MathUtils.radToDeg(currentPitch).toFixed(0)}/${THREE.MathUtils.radToDeg(currentYaw).toFixed(0)}/0`;
+  uiRpy.textContent = `${THREE.MathUtils.radToDeg(accumulatedPitch).toFixed(0)}/${THREE.MathUtils.radToDeg(accumulatedYaw).toFixed(0)}/0`;
   uiOffset.textContent = Math.hypot(dx, dy).toFixed(2);
 
   const totalDist = isKid ? 35.0 : 80.0;
@@ -466,7 +468,7 @@ function animate() {
     setTimeout(() => {
       const timeTaken = ((performance.now() - missionStartTime) / 1000).toFixed(1);
       const fuelLeft = phys.fuel.toFixed(1);
-      const errAngle = THREE.MathUtils.radToDeg(Math.hypot(currentPitch, currentYaw)).toFixed(1);
+      const errAngle = THREE.MathUtils.radToDeg(Math.hypot(accumulatedPitch, accumulatedYaw)).toFixed(1);
       
       let grade = 'C';
       if (fuelLeft > 250 && errAngle < 3.0) grade = 'S';
