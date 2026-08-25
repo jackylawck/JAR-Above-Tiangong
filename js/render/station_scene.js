@@ -28,15 +28,15 @@ export function setupStationScene() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.3; // 調低曝光，還原色彩細節
+  renderer.toneMappingExposure = 1.3;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x010103);
   const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 5000);
 
-  // --- 1. 光照系統 (更真實的太陽強度) ---
+  // --- 1. 光照系統 ---
   const sunDir = new THREE.Vector3(1.0, 0.5, 0.8).normalize();
-  const sunLight = new THREE.DirectionalLight(0xffeedd, 3.5); // 將核爆級 6.0 降回 3.5
+  const sunLight = new THREE.DirectionalLight(0xffeedd, 3.5);
   sunLight.position.copy(sunDir).multiplyScalar(300);
   scene.add(sunLight);
   scene.add(new THREE.AmbientLight(0x0a1525, 0.3));
@@ -85,7 +85,7 @@ export function setupStationScene() {
   starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
   scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 1.2, vertexColors: true, transparent: true, opacity: 0.95 })));
 
-  // --- 3. 電影級著色器地球 (AAA Cinematic Earth) ---
+  // --- 3. 電影級著色器地球 ---
   const earthRadius = 350;
   const earthShaderMat = new THREE.ShaderMaterial({
     uniforms: { uSunDirection: { value: sunDir }, uTime: { value: 0 } },
@@ -154,37 +154,30 @@ export function setupStationScene() {
 
       void main() {
         vec3 normPos = normalize(vPosition);
-        float n = fbm(normPos * 2.5); // 優化陸地分佈
+        float n = fbm(normPos * 2.5);
         
         vec3 color;
         float isLand = step(0.02, n);
         
-        // 海洋漸變 (深海 -> 淺灘)
         if (isLand < 0.5) {
           float depth = smoothstep(-0.4, 0.02, n);
           color = mix(vec3(0.01, 0.08, 0.25), vec3(0.0, 0.35, 0.55), depth);
         } else {
-          // 陸地漸變 (平原 -> 高山 -> 雪頂)
           float elevation = smoothstep(0.02, 0.5, n);
           color = mix(vec3(0.02, 0.15, 0.05), vec3(0.3, 0.25, 0.15), elevation);
           color = mix(color, vec3(0.8, 0.85, 0.9), smoothstep(0.35, 0.6, n));
         }
         
-        // 極地冰帽 (Polar Ice Caps)
         float poleMask = smoothstep(0.75, 0.98, abs(normPos.y));
         float iceNoise = fbm(normPos * 10.0);
         color = mix(color, vec3(0.9, 0.95, 1.0), poleMask * (0.5 + 0.5 * iceNoise));
 
         float NdotL = dot(vNormal, uSunDirection);
-        
-        // 柔和的漫反射 (Wrap Lighting 模擬大氣擴散)
         float diffuse = max(0.0, (NdotL + 0.15) / 1.15);
         
-        // 日夜交界線的暮光散射 (Rayleigh Terminator Glow)
         float terminator = smoothstep(-0.25, 0.15, NdotL) * smoothstep(0.15, -0.25, NdotL);
         vec3 sunsetGlow = vec3(0.9, 0.3, 0.1) * terminator * 1.2;
         
-        // 智能城市燈光 (避開海洋與極地)
         float cityGlow = 0.0;
         if (NdotL < 0.0 && isLand > 0.5 && poleMask < 0.1) {
             float cityNoise = snoise(normPos * 45.0);
@@ -203,13 +196,25 @@ export function setupStationScene() {
   earth.position.set(0, -420, -50);
   scene.add(earth);
 
-  // ☁️ 修復 1：放棄自發光，改用具備真實物理陰影的 Lambert 材質
+  // --- 正確位置：月球實體網格 ---
+  const moonRadius = 24;
+  const moonGeo = new THREE.SphereGeometry(moonRadius, 32, 32);
+  const moonMat = new THREE.MeshStandardMaterial({
+    color: 0x888890,
+    roughness: 0.95,
+    metalness: 0.05
+  });
+  const moon = new THREE.Mesh(moonGeo, moonMat);
+  moon.position.set(-600, 320, -1200);
+  scene.add(moon);
+
+  // ☁️ 雲層 (Lambert 材質)
   const clouds = new THREE.Mesh(
     new THREE.SphereGeometry(earthRadius * 1.015, 64, 64),
     new THREE.MeshLambertMaterial({ 
       map: getCloudTexture(), 
       transparent: true, 
-      blending: THREE.NormalBlending, // 拒絕核爆級發光
+      blending: THREE.NormalBlending,
       side: THREE.FrontSide, 
       depthWrite: false, 
       opacity: 0.45 
@@ -218,7 +223,7 @@ export function setupStationScene() {
   clouds.position.copy(earth.position);
   scene.add(clouds);
 
-  // 🌍 修復 2：完美的大氣邊緣散射 (FrontSide Rim Lighting)
+  // 🌍 大氣邊緣散射
   const atmosphere = new THREE.Mesh(
     new THREE.SphereGeometry(earthRadius * 1.045, 64, 64),
     new THREE.ShaderMaterial({
@@ -228,7 +233,7 @@ export function setupStationScene() {
         void main() {
           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
           vNormal = normalize(normalMatrix * normal);
-          vViewPosition = -mvPosition.xyz; // 獲取相機視角向量
+          vViewPosition = -mvPosition.xyz;
           gl_Position = projectionMatrix * mvPosition;
         }
       `,
@@ -238,7 +243,6 @@ export function setupStationScene() {
         void main() {
           vec3 normal = normalize(vNormal);
           vec3 viewDir = normalize(vViewPosition);
-          // 只在邊緣產生光暈
           float rim = 1.0 - max(0.0, dot(normal, viewDir));
           float intensity = smoothstep(0.55, 1.0, rim);
           gl_FragColor = vec4(0.2, 0.5, 1.0, intensity * 0.85);
@@ -246,7 +250,7 @@ export function setupStationScene() {
       `,
       transparent: true, 
       blending: THREE.AdditiveBlending, 
-      side: THREE.FrontSide, // 放棄 BackSide，避免全屏幕渲染成史萊姆
+      side: THREE.FrontSide,
       depthWrite: false
     })
   );
