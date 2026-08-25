@@ -2,10 +2,9 @@
 <html lang="zh-HK">
 <head>
   <meta charset="UTF-8">
-  <!-- AAA 優化：徹底鎖死視窗縮放，防止雙指操作時畫面意外放大 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   
-  <!-- AAA 優化：Web App 全螢幕沉浸模式 (可將網頁加入主畫面，隱藏 Safari 網址列) -->
+  <!-- PWA 全螢幕沉浸標籤 -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#020308">
@@ -13,7 +12,7 @@
   <title>J.A.R. 天宮之上 3D | Above Tiangong 3D</title>
   <link rel="stylesheet" href="css/mobile-style.css">
   
-  <!-- AAA 優化：相容舊版 iOS/Android 瀏覽器的 Import Map Polyfill -->
+  <!-- 模組加載相容性 Polyfill -->
   <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
 
   <script type="importmap">
@@ -24,8 +23,6 @@
     }
   </script>
 </head>
-
-<!-- AAA 優化：overscroll-behavior 封殺下拉更新，oncontextmenu 封殺長按右鍵選單 -->
 <body oncontextmenu="return false;" style="overscroll-behavior: none;">
   <canvas id="webgl-canvas"></canvas>
 
@@ -103,6 +100,28 @@
       </div>
     </div>
   </div>
+
+  <!-- 手勢防誤觸與縮放攔截 -->
+  <script>
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function (event) {
+      const now = (new Date()).getTime();
+      if (now - lastTouchEnd <= 300) {
+        event.preventDefault();
+      }
+      lastTouchEnd = now;
+    }, { passive: false });
+
+    document.addEventListener('touchmove', function (event) {
+      if (event.touches.length > 1) {
+        event.preventDefault();
+      }
+    }, { passive: false });
+
+    document.addEventListener('dblclick', function (event) {
+      event.preventDefault();
+    }, { passive: false });
+  </script>
 
   <script type="module" src="js/app.js"></script>
 </body>
