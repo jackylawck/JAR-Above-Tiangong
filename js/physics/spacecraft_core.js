@@ -10,18 +10,17 @@ export class SpacecraftEngine {
     this.g0 = 9.80665;
     this.meanMotion = 0.00113;
 
-    // 初始位置與速度
+    // 初始位置與狀態
     this.state = new Float64Array([0, 0, 35.0, 0, 0, -0.25]);
     this.omega = new THREE.Vector3(0, 0, 0); // 角速度 (rad/s)
     this.quat = new THREE.Quaternion(0, 0, 0, 1);
-    this.moi = new THREE.Vector3(800, 800, 600); // 調低轉動慣量，提升靈敏度
+    this.moi = new THREE.Vector3(1200, 1200, 1000);
     this.accBody = new THREE.Vector3();
   }
 
   step(dt, thrustCmd, torqueCmd) {
     const totalMass = this.massDry + this.fuel;
     
-    // 平移推力
     const appliedThrust = thrustCmd.clone().multiplyScalar(this.thrustMultiplier * 200.0);
     const thrustMag = appliedThrust.length();
     
@@ -50,22 +49,32 @@ export class SpacecraftEngine {
     this.state[4] += yDotDot * dt;
     this.state[5] += zDotDot * dt;
 
+    // 橫向主動穩定阻尼：若無手動橫移輸入，自動抑制側向漂移速度
+    if (Math.abs(thrustCmd.x) < 0.05) {
+      this.state[3] *= 0.92;
+    }
+    if (Math.abs(thrustCmd.y) < 0.05) {
+      this.state[4] *= 0.92;
+    }
+
     this.state[0] += this.state[3] * dt;
     this.state[1] += this.state[4] * dt;
     this.state[2] += this.state[5] * dt;
 
-    // 姿態步進：提升 RCS 力矩響應
-    const appliedTorque = torqueCmd.clone().multiplyScalar(280.0);
+    // 姿態步進：受控力矩
+    const appliedTorque = torqueCmd.clone().multiplyScalar(120.0);
     this.omega.x += (appliedTorque.x / this.moi.x) * dt;
     this.omega.y += (appliedTorque.y / this.moi.y) * dt;
     this.omega.z += (appliedTorque.z / this.moi.z) * dt;
 
-    // 阻尼回饋：無操作時平穩減速
-    if (torqueCmd.lengthSq() === 0) {
-      this.omega.multiplyScalar(0.92);
+    // SAS 姿態主動穩定阻尼：鬆手時角速度迅速歸零
+    if (torqueCmd.lengthSq() < 0.01) {
+      this.omega.multiplyScalar(0.85);
+    } else {
+      this.omega.multiplyScalar(0.95);
     }
 
-    // 四元數運動學積分
+    // 四元數積分
     const halfDt = dt * 0.5;
     const dq = new THREE.Quaternion(
       this.omega.x * halfDt,
