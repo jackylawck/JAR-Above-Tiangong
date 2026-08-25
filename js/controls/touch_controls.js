@@ -1,92 +1,102 @@
 // js/controls/touch_controls.js
+import * as THREE from 'three';
+
 export class DualTouchControls {
   constructor() {
-    this.transInput = { x: 0, y: 0 };
-    this.rotInput = { x: 0, y: 0 };
-    this.exponent = 1.8; // 指數敏感度係數 (Deadzone + Power Curve)
-    this.initJoysticks();
-  }
-
-  // 非線性響應轉換
-  applyExpoCurve(val) {
-    const deadzone = 0.05;
-    if (Math.abs(val) < deadzone) return 0;
-    const sign = Math.sign(val);
-    const scaled = (Math.abs(val) - deadzone) / (1.0 - deadzone);
-    return sign * Math.pow(scaled, this.exponent);
-  }
-
-  initJoysticks() {
-    this.bindJoystick('zone-trans', 'knob-trans', v => {
-      this.transInput = {
-        x: this.applyExpoCurve(v.x),
-        y: this.applyExpoCurve(v.y)
-      };
-    });
-
-    this.bindJoystick('zone-rot', 'knob-rot', v => {
-      this.rotInput = {
-        x: this.applyExpoCurve(v.x),
-        y: this.applyExpoCurve(v.y)
-      };
-    });
-  }
-
-  bindJoystick(zoneId, knobId, onMove) {
-    const zone = document.getElementById(zoneId);
-    const knob = document.getElementById(knobId);
+    this.transInput = new THREE.Vector2(); // 平移輸入 (X/Y)
+    this.rotInput = new THREE.Vector2();   // 姿態輸入 (P/Y)
     
-    let activePointerId = null;
-    let startX = 0, startY = 0;
-    const maxTravel = 38; // 搖桿最大物理位移半徑
+    this.zoneTrans = document.getElementById('zone-trans');
+    this.knobTrans = document.getElementById('knob-trans');
+    this.zoneRot = document.getElementById('zone-rot');
+    this.knobRot = document.getElementById('knob-rot');
 
-    // 1. 按下：捕獲 Pointer
-    zone.addEventListener('pointerdown', (e) => {
-      if (activePointerId !== null) return;
-      
-      activePointerId = e.pointerId;
-      zone.setPointerCapture(activePointerId); // 鎖定該根手指
+    this.maxRadius = 38; // 搖桿最大滑動半徑 (px)
+    this.transTouchId = null;
+    this.rotTouchId = null;
 
-      // 計算搖桿中心點作為錨點
-      const r = zone.getBoundingClientRect();
-      startX = r.left + r.width / 2;
-      startY = r.top + r.height / 2;
-    });
+    this.initEvents();
+  }
 
-    // 2. 移動：精確計算與邊界限制
-    zone.addEventListener('pointermove', (e) => {
-      if (activePointerId !== e.pointerId) return;
+  initEvents() {
+    // 平移搖桿監聽
+    if (this.zoneTrans) {
+      this.zoneTrans.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        this.transTouchId = touch.identifier;
+        this.updateJoystick(touch, this.zoneTrans, this.knobTrans, this.transInput);
+      }, { passive: false });
 
-      let dx = e.clientX - startX;
-      let dy = e.clientY - startY;
-      
-      // 使用 Math.sqrt 替代 Math.hypot，在極高頻觸發下效能微幅提升
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      
-      if (dist > maxTravel) {
-        dx = (dx / dist) * maxTravel;
-        dy = (dy / dist) * maxTravel;
-      }
+      this.zoneTrans.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          if (e.changedTouches[i].identifier === this.transTouchId) {
+            this.updateJoystick(e.changedTouches[i], this.zoneTrans, this.knobTrans, this.transInput);
+          }
+        }
+      }, { passive: false });
 
-      // 觸發硬體加速的 CSS 變換
-      knob.style.transform = `translate(${dx}px, ${dy}px)`;
-      onMove({ x: dx / maxTravel, y: -dy / maxTravel });
-    });
+      const resetTrans = (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          if (e.changedTouches[i].identifier === this.transTouchId) {
+            this.transTouchId = null;
+            this.transInput.set(0, 0);
+            this.knobTrans.style.transform = 'translate(-50%, -50%)';
+          }
+        }
+      };
+      this.zoneTrans.addEventListener('touchend', resetTrans);
+      this.zoneTrans.addEventListener('touchcancel', resetTrans);
+    }
 
-    // 3. 鬆開/取消：精準重置
-    const reset = (e) => {
-      if (activePointerId !== e.pointerId) return; // 絕不干擾另一根手指
-      
-      zone.releasePointerCapture(activePointerId);
-      activePointerId = null;
-      knob.style.transform = 'translate(0px, 0px)';
-      onMove({ x: 0, y: 0 });
-    };
+    // 姿態搖桿監聽
+    if (this.zoneRot) {
+      this.zoneRot.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        this.rotTouchId = touch.identifier;
+        this.updateJoystick(touch, this.zoneRot, this.knobRot, this.rotInput);
+      }, { passive: false });
 
-    zone.addEventListener('pointerup', reset);
-    zone.addEventListener('pointercancel', reset);
-    
-    // 防止觸控時螢幕跟著滾動或縮放
-    zone.addEventListener('contextmenu', e => e.preventDefault());
+      this.zoneRot.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          if (e.changedTouches[i].identifier === this.rotTouchId) {
+            this.updateJoystick(e.changedTouches[i], this.zoneRot, this.knobRot, this.rotInput);
+          }
+        }
+      }, { passive: false });
+
+      const resetRot = (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          if (e.changedTouches[i].identifier === this.rotTouchId) {
+            this.rotTouchId = null;
+            this.rotInput.set(0, 0);
+            this.knobRot.style.transform = 'translate(-50%, -50%)';
+          }
+        }
+      };
+      this.zoneRot.addEventListener('touchend', resetRot);
+      this.zoneRot.addEventListener('touchcancel', resetRot);
+    }
+  }
+
+  updateJoystick(touch, zone, knob, outVector) {
+    const rect = zone.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    let dx = touch.clientX - centerX;
+    let dy = touch.clientY - centerY;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > this.maxRadius) {
+      dx = (dx / dist) * this.maxRadius;
+      dy = (dy / dist) * this.maxRadius;
+    }
+
+    knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    outVector.set(dx / this.maxRadius, -dy / this.maxRadius);
   }
 }
