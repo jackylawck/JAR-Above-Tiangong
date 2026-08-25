@@ -134,6 +134,10 @@ const _imuWrapper = { acc: null, gyro: null };
 let currentActualThrust = new THREE.Vector3();
 let currentActualTorque = new THREE.Vector3();
 
+// 相機基礎視向偏移（將預設 -Z 轉向 +Y 航向）
+const _qBaseOffset = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+const _qRender = new THREE.Quaternion();
+
 let typeWriterTimeout = null;
 let typeWriterTick = null;
 let currentNarrativeKey = null;
@@ -162,14 +166,12 @@ function playNarrative(key, duration = 4000) {
   type();
 }
 
-// 🚀 正確重置任務（精確對準天宮，絕不偏離視野）
 function startNewMission() {
   const isKid = fsm.difficulty === Difficulty.KID;
   const startDist = isKid ? -35.0 : -80.0;
   
-  // 兒童模式極小微偏，確保空間站永遠在正前方
-  const randX = (Math.random() - 0.5) * (isKid ? 1.5 : 8.0);
-  const randZ = (Math.random() - 0.5) * (isKid ? 1.5 : 8.0);
+  const randX = (Math.random() - 0.5) * (isKid ? 0.8 : 4.0);
+  const randZ = (Math.random() - 0.5) * (isKid ? 0.8 : 4.0);
   
   engine.state[0] = randX;
   engine.state[1] = startDist;
@@ -178,7 +180,7 @@ function startNewMission() {
   engine.state[4] = isKid ? 0.35 : 0.15;
   engine.state[5] = 0;
   
-  // 姿態精確朝向空間站（正前方 Y 軸）
+  // 姿態歸零
   engine.quat.set(0, 0, 0, 1);
   mekf.qNominal.set(0, 0, 0, 1);
   engine.omega.set(0, 0, 0);
@@ -213,7 +215,6 @@ btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
 btnDiff.style.borderColor = '#00ffaa';
 btnDiff.style.color = '#00ffaa';
 
-// 立即執行一次初始化
 startNewMission();
 
 btnDiff.onclick = () => {
@@ -296,31 +297,29 @@ function animate() {
 
   const isKid = fsm.difficulty === Difficulty.KID;
 
-  // 🚀 平移與姿態力矩解耦：平移給予充沛動力，姿態保持細膩（0.15）
   _rawThrust.set(
     controls.transInput.x * (isKid ? 2.5 : 1.0),
-    0,
-    -controls.transInput.y * (isKid ? 3.0 : 1.0)
+    controls.transInput.y * (isKid ? 3.0 : 1.0), // Y 軸為主要進近方向
+    0
   );
   _rawTorque.set(
-    controls.rotInput.y * 0.15,
-    -controls.rotInput.x * 0.15,
+    controls.rotInput.y * 0.12,
+    -controls.rotInput.x * 0.12,
     0
   );
 
   const currentDist = engine.state[0]**2 + engine.state[1]**2 + engine.state[2]**2;
   
-  // 磁吸自動導正輔助
   if (fsm.assistMagnet && currentDist < 25.0 && fsm.mode !== MissionModes.ABORT) {
     const magnetPower = isKid ? 0.08 : 0.03;
     _rawThrust.x -= engine.state[0] * magnetPower;
-    _rawThrust.y -= engine.state[2] * magnetPower;
+    _rawThrust.z -= engine.state[2] * magnetPower;
   }
-  if (fsm.mode === MissionModes.ABORT) _rawThrust.set(0, 0, -1.0);
+  if (fsm.mode === MissionModes.ABORT) _rawThrust.set(0, -1.0, 0);
 
   const massRatio = 3300.0 / (engine.massDry + engine.fuel); 
   const maxThrustRate = 3.5 * massRatio; 
-  const maxTorqueRate = 2.0 * massRatio; // 降低角加速度變化率，消除猛烈轉頭
+  const maxTorqueRate = 1.8 * massRatio;
 
   _deltaThrust.subVectors(_rawThrust, currentActualThrust);
   if (_deltaThrust.lengthSq() > (maxThrustRate * dt) ** 2) {
@@ -347,6 +346,7 @@ function animate() {
     mekf.update(syncdData.starQuat, syncdData.lidarPos, null, true, true);
   }
 
+  // 🚀 相機位置與四元數朝向更新（加上基礎偏移，視線正對空間站）
   if (screenShake > 0.001) {
     camera.position.set(
       phys.pos.x + (Math.random() - 0.5) * screenShake,
@@ -357,8 +357,11 @@ function animate() {
   } else {
     camera.position.copy(phys.pos);
   }
-  camera.quaternion.copy(mekf.qNominal);
 
+  _qRender.multiplyQuaternions(mekf.qNominal, _qBaseOffset);
+  camera.quaternion.copy(_qRender);
+
+  // 瞄準具投影
   _screenPos.copy(targetRingPos).project(camera);
   const cx = (_screenPos.x * window.innerWidth) / 2;
   const cy = (-_screenPos.y * window.innerHeight) / 2;
