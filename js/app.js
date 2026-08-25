@@ -19,7 +19,8 @@ const fdir = new FDIRSystem();
 const sync = new TimeSynchronizer(0.5);
 const fsm = new MissionFSM();
 const engine = new SpacecraftEngine();
-const { renderer, scene, camera, targetRingPos, earthShaderMat, clouds } = setupStationScene();
+// 🚀 修正：正確接收 beacons 與 rcsPlumes
+const { renderer, scene, camera, targetRingPos, earthShaderMat, clouds, beacons, rcsPlumes } = setupStationScene();
 const audio = new SpaceAudioManager();
 const impactFX = new ImpactFXManager(scene, camera);
 const clock = new THREE.Clock();
@@ -41,23 +42,30 @@ const uiCov = document.getElementById('val-cov');
 const btnDiff = document.getElementById('btn-diff');
 const btnMode = document.getElementById('btn-mode');
 const btnAbort = document.getElementById('btn-abort');
-
-// --- 新增：敘事與結算 UI ---
 const narrativeBox = document.getElementById('narrative-box');
 const narrativeText = document.getElementById('narrative-text');
 const missionReport = document.getElementById('mission-report');
 const btnRestart = document.getElementById('btn-restart');
 
-// UI 動畫狀態變數 (Juice)
 let displayRange = 80.0, displaySpeed = 0.15, displayFuel = 300.0;
-
-// ==========================================
-// 敘事引擎與任務管理 (J.A.R. AI)
-// ==========================================
 let typeWriterTimeout = null;
 let missionStartTime = 0;
 let isMissionActive = false;
 
+// ==========================================
+// 🚀 極致優化：預先分配主迴圈所需的所有暫存變數 (Zero Allocation)
+// ==========================================
+const _rawThrust = new THREE.Vector3();
+const _rawTorque = new THREE.Vector3();
+const _deltaThrust = new THREE.Vector3();
+const _deltaTorque = new THREE.Vector3();
+const _screenPos = new THREE.Vector3();
+const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _imuWrapper = { acc: null, gyro: null }; // 重複使用的物件包裝器
+let currentActualThrust = new THREE.Vector3();
+let currentActualTorque = new THREE.Vector3();
+
+// 敘事引擎與任務管理
 function playNarrative(text, duration = 4000) {
   clearTimeout(typeWriterTimeout);
   narrativeText.textContent = '';
@@ -79,22 +87,19 @@ function playNarrative(text, duration = 4000) {
 }
 
 function startNewMission() {
-  // 隨機初始位置 (增加重玩挑戰性)
   const randX = (Math.random() - 0.5) * 20;
   const randZ = (Math.random() - 0.5) * 20;
-  engine.state = [randX, -80, randZ, 0, 0.15, 0];
+  engine.state[0] = randX; engine.state[1] = -80; engine.state[2] = randZ;
+  engine.state[3] = 0; engine.state[4] = 0.15; engine.state[5] = 0;
   engine.fuel = 300.0;
   currentActualThrust.set(0, 0, 0);
   currentActualTorque.set(0, 0, 0);
-  
-  // 隨機姿態微小擾動
   engine.omega.set((Math.random()-0.5)*0.02, (Math.random()-0.5)*0.02, 0);
   
   missionStartTime = performance.now();
   isMissionActive = true;
   if(missionReport) missionReport.classList.add('hidden');
   
-  // 難度專屬語音
   if (fsm.difficulty === Difficulty.KID) {
     playNarrative("Jarvis，準備好對接了嗎？交給你了！大膽推搖桿吧！");
   } else if (fsm.difficulty === Difficulty.SCIENTIST) {
@@ -104,21 +109,12 @@ function startNewMission() {
   }
 }
 
-// 綁定 UI 重啟按鈕
-if(btnRestart) {
-  btnRestart.onclick = () => {
-    audio.playRadioBeep();
-    startNewMission();
-  };
-}
-
-// 初始化第一次任務
+if(btnRestart) btnRestart.onclick = () => { audio.playRadioBeep(); startNewMission(); };
 window.addEventListener('touchstart', () => { if(!isMissionActive) startNewMission(); }, {once: true});
 window.addEventListener('click', () => { if(!isMissionActive) startNewMission(); }, {once: true});
 
-
-// --- 難度仲裁系統 (CAS) ---
-let diffIndex = 1; // 預設 PRO
+// 難度仲裁系統 (CAS)
+let diffIndex = 1;
 const diffLevels = [Difficulty.KID, Difficulty.PRO, Difficulty.SCIENTIST];
 const diffLabels = ['🧒 兒童模式', '🛠️ 進階模式', '🔬 科學模式'];
 
@@ -139,7 +135,7 @@ btnDiff.onclick = () => {
     btnMode.textContent = i18n.currentLang === 'zh-HK' ? `模式: ${fsm.mode}` : `MODE: ${fsm.mode}`;
   }
   audio.playRadioBeep();
-  if(isMissionActive) startNewMission(); // 切換難度自動重開任務
+  if(isMissionActive) startNewMission();
 };
 
 btnMode.onclick = () => {
@@ -163,7 +159,6 @@ document.getElementById('btn-lang').onclick = () => {
   btnMode.textContent = i18n.currentLang === 'zh-HK' ? `模式: ${fsm.mode}` : `MODE: ${fsm.mode}`;
 };
 
-// 暗號彩蛋：火鷹 (FIRE BIRD)
 let eggClicks = 0;
 document.getElementById('title-tag').onclick = () => {
   if (fsm.difficulty === Difficulty.SCIENTIST) {
@@ -180,12 +175,6 @@ document.getElementById('title-tag').onclick = () => {
 };
 
 // ==========================================
-// 物理執行機構變化率限幅器 (Rate Limiter)
-// ==========================================
-let currentActualThrust = new THREE.Vector3();
-let currentActualTorque = new THREE.Vector3();
-
-// ==========================================
 // 系統主迴圈 (Main Pipeline Loop)
 // ==========================================
 function animate() {
@@ -193,40 +182,41 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const now = performance.now();
 
-  const rawThrust = new THREE.Vector3(controls.transInput.x, 0, -controls.transInput.y);
-  const rawTorque = new THREE.Vector3(controls.rotInput.y * 0.4, -controls.rotInput.x * 0.4, 0);
+  // In-place 向量賦值，消滅 new Vector3()
+  _rawThrust.set(controls.transInput.x, 0, -controls.transInput.y);
+  _rawTorque.set(controls.rotInput.y * 0.4, -controls.rotInput.x * 0.4, 0);
 
   const currentDist = engine.state[0]**2 + engine.state[1]**2 + engine.state[2]**2;
   if (fsm.assistMagnet && currentDist < 16.0 && fsm.mode !== MissionModes.ABORT) {
-    rawThrust.x -= engine.state[0] * 0.05;
-    rawThrust.y -= engine.state[2] * 0.05;
+    _rawThrust.x -= engine.state[0] * 0.05;
+    _rawThrust.y -= engine.state[2] * 0.05;
   }
+  if (fsm.mode === MissionModes.ABORT) _rawThrust.set(0, 0, -1.0);
 
-  if (fsm.mode === MissionModes.ABORT) {
-    rawThrust.set(0, 0, -1.0);
-  }
-
-  const totalMass = engine.massDry + engine.fuel;
-  const massRatio = 3300.0 / totalMass; 
+  const massRatio = 3300.0 / (engine.massDry + engine.fuel); 
   const maxThrustRate = 3.5 * massRatio; 
   const maxTorqueRate = 4.0 * massRatio; 
 
-  const deltaThrust = new THREE.Vector3().subVectors(rawThrust, currentActualThrust);
-  if (deltaThrust.length() > maxThrustRate * dt) {
-    deltaThrust.normalize().multiplyScalar(maxThrustRate * dt);
+  // In-place 限幅運算
+  _deltaThrust.subVectors(_rawThrust, currentActualThrust);
+  if (_deltaThrust.lengthSq() > (maxThrustRate * dt) ** 2) {
+    _deltaThrust.normalize().multiplyScalar(maxThrustRate * dt);
   }
-  currentActualThrust.add(deltaThrust);
+  currentActualThrust.add(_deltaThrust);
 
-  const deltaTorque = new THREE.Vector3().subVectors(rawTorque, currentActualTorque);
-  if (deltaTorque.length() > maxTorqueRate * dt) {
-    deltaTorque.normalize().multiplyScalar(maxTorqueRate * dt);
+  _deltaTorque.subVectors(_rawTorque, currentActualTorque);
+  if (_deltaTorque.lengthSq() > (maxTorqueRate * dt) ** 2) {
+    _deltaTorque.normalize().multiplyScalar(maxTorqueRate * dt);
   }
-  currentActualTorque.add(deltaTorque);
+  currentActualTorque.add(_deltaTorque);
 
   const phys = engine.step(dt, currentActualThrust, currentActualTorque);
-
   const starQuat = fdir.voteStarSensors(phys.quat);
-  sync.pushSample(now, { acc: phys.accBody, gyro: engine.omega }, phys.pos, starQuat);
+  
+  // 避免每幀新建 { acc, gyro } 物件
+  _imuWrapper.acc = phys.accBody;
+  _imuWrapper.gyro = engine.omega;
+  sync.pushSample(now, _imuWrapper, phys.pos, starQuat);
 
   const syncdData = sync.getInterpolatedSample(now - 40);
   if (syncdData) {
@@ -237,14 +227,15 @@ function animate() {
   camera.position.copy(phys.pos);
   camera.quaternion.copy(mekf.qNominal);
 
-  const screenPos = targetRingPos.clone().project(camera);
-  const cx = (screenPos.x * window.innerWidth) / 2;
-  const cy = (-screenPos.y * window.innerHeight) / 2;
+  // In-place 螢幕投影，消滅 clone()
+  _screenPos.copy(targetRingPos).project(camera);
+  const cx = (_screenPos.x * window.innerWidth) / 2;
+  const cy = (-_screenPos.y * window.innerHeight) / 2;
   reticle.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
 
   const dist = phys.pos.length();
   const speed = phys.vel.length();
-  const euler = new THREE.Euler().setFromQuaternion(mekf.qNominal, 'YXZ');
+  _euler.setFromQuaternion(mekf.qNominal);
 
   const lerpUI = 0.12;
   displayRange += (dist - displayRange) * lerpUI;
@@ -254,16 +245,12 @@ function animate() {
   uiRange.textContent = displayRange.toFixed(2);
   uiRate.textContent = displaySpeed.toFixed(2);
   uiFuel.textContent = displayFuel.toFixed(1);
-  
   uiAlt.textContent = (400 + (phys.pos.y + 80) / 1000).toFixed(1);
-  uiRpy.textContent = `${THREE.MathUtils.radToDeg(euler.x).toFixed(1)}/${THREE.MathUtils.radToDeg(euler.y).toFixed(1)}/${THREE.MathUtils.radToDeg(euler.z).toFixed(1)}`;
+  uiRpy.textContent = `${THREE.MathUtils.radToDeg(_euler.x).toFixed(1)}/${THREE.MathUtils.radToDeg(_euler.y).toFixed(1)}/${THREE.MathUtils.radToDeg(_euler.z).toFixed(1)}`;
   uiOffset.textContent = Math.hypot(phys.pos.x, phys.pos.z).toFixed(2);
   uiCov.textContent = (mekf.P[0][0] + mekf.P[4][4]).toFixed(4);
 
-  // --- 動態聲景更新 ---
-  if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') {
-    audio.updateAdaptiveMusic(dist);
-  }
+  if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(dist);
 
   const fsmResult = fsm.evaluate(dist, speed);
   
@@ -272,7 +259,6 @@ function animate() {
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
-  // --- 失敗處理 ---
   if (fsmResult.statusKey === 'statusOverSpeed' && dist < fsm.dockingThreshold && !impactFX.isExploding && isMissionActive) {
     isMissionActive = false;
     audio.playExplosion();
@@ -286,15 +272,12 @@ function animate() {
 
     impactFX.triggerCatastrophicFailure(phys.pos, () => {
       setTimeout(() => {
-        uiFsm.style.color = '';
-        uiFsm.style.fontSize = '';
-        uiFsm.style.fontWeight = '';
-        startNewMission(); // 爆炸後自動重啟
+        uiFsm.style.color = ''; uiFsm.style.fontSize = ''; uiFsm.style.fontWeight = '';
+        startNewMission();
       }, 2000);
     });
   }
 
-  // --- 成功結算 (Mission Report) ---
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
     if(typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
@@ -303,7 +286,7 @@ function animate() {
     setTimeout(() => {
       const timeTaken = ((performance.now() - missionStartTime) / 1000).toFixed(1);
       const fuelLeft = phys.fuel.toFixed(1);
-      const errAngle = THREE.MathUtils.radToDeg(euler.x**2 + euler.y**2 + euler.z**2).toFixed(2);
+      const errAngle = THREE.MathUtils.radToDeg(_euler.x**2 + _euler.y**2 + _euler.z**2).toFixed(2);
       
       let grade = 'C';
       if (fuelLeft > 250 && errAngle < 2.0) grade = 'S';
@@ -321,13 +304,24 @@ function animate() {
     }, 2000);
   }
 
-  // --- 動態環境渲染 ---
-  if (earthShaderMat && earthShaderMat.uniforms.uTime) {
-    earthShaderMat.uniforms.uTime.value = now * 0.001;
-  }
+  // 🚀 整合：天宮心跳燈、動態雲層與 RCS 尾焰聯動 (Zero Allocation)
+  if (earthShaderMat && earthShaderMat.uniforms.uTime) earthShaderMat.uniforms.uTime.value = now * 0.001;
   if (clouds) clouds.rotation.y += dt * 0.005;
 
-  // 終極 1%：太陽能板微重力顫動
+  if (beacons) {
+    const blinkPhase = Math.sin(now / 800) > 0;
+    for (let i = 0; i < beacons.length; i++) {
+      beacons[i].material.emissiveIntensity = (i % 2 === 0) ? (blinkPhase ? 2.5 : 0.1) : (blinkPhase ? 0.1 : 2.5);
+    }
+  }
+
+  if (rcsPlumes) {
+    rcsPlumes.left.material.opacity = Math.max(0, -controls.transInput.x * 0.8);
+    rcsPlumes.right.material.opacity = Math.max(0, controls.transInput.x * 0.8);
+    rcsPlumes.up.material.opacity = Math.max(0, -controls.transInput.y * 0.8);
+    rcsPlumes.down.material.opacity = Math.max(0, controls.transInput.y * 0.8);
+  }
+
   scene.children.forEach(child => {
     if (child.isGroup && child.children.length > 3) {
       const panelL = child.children[child.children.length - 2];
