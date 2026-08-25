@@ -73,7 +73,7 @@ function toggleTelemetryPanel() {
 
 if (panelToggleHeader) panelToggleHeader.onclick = toggleTelemetryPanel;
 
-// 煙火粒子系統 (Zero-Allocation Pool)
+// 煙火粒子
 const FIREWORK_COUNT = 600;
 const fwGeo = new THREE.BufferGeometry();
 const fwPos = new Float32Array(FIREWORK_COUNT * 3);
@@ -138,6 +138,7 @@ const _deltaThrust = new THREE.Vector3();
 const _deltaTorque = new THREE.Vector3();
 const _screenPos = new THREE.Vector3();
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _identityQuat = new THREE.Quaternion(0, 0, 0, 1);
 const _imuWrapper = { acc: null, gyro: null }; 
 const currentActualThrust = new THREE.Vector3();
 const currentActualTorque = new THREE.Vector3();
@@ -288,12 +289,20 @@ function animate() {
   );
   
   _rawTorque.set(
-    controls.rotInput.y * 0.4,
-    -controls.rotInput.x * 0.4,
+    controls.rotInput.y * 0.35,
+    -controls.rotInput.x * 0.35,
     0
   );
 
-  // 🚀 立體聲 RCS 音效同步觸發
+  // 🚀 關鍵修復：SAS 姿態主動自動回正（鬆手自動平滑轉返正前方）
+  if (controls.rotInput.lengthSq() < 0.01 && isMissionActive) {
+    const autoLevelSpeed = isKid ? 0.08 : 0.03; // 兒童模式快速自瞄回正
+    engine.quat.slerp(_identityQuat, autoLevelSpeed);
+    mekf.qNominal.slerp(_identityQuat, autoLevelSpeed);
+    engine.omega.multiplyScalar(0.85); // 快速煞停角速度
+  }
+
+  // 立體聲 RCS 音效
   if (controls.transInput.lengthSq() > 0.01 || controls.rotInput.lengthSq() > 0.01) {
     const power = Math.max(controls.transInput.length(), controls.rotInput.length());
     const pan = controls.transInput.x || controls.rotInput.x;
@@ -489,7 +498,7 @@ function animate() {
     }, 2000);
   }
 
-  // 8. 視覺渲染與特效推進
+  // 8. 視覺渲染推進
   impactFX.update(dt);
 
   if (isFireworksActive) {
