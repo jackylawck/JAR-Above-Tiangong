@@ -11,7 +11,6 @@ import { setupStationScene } from './render/station_scene.js';
 import { SpaceAudioManager } from './audio/space_audio.js';
 import { ImpactFXManager } from './render/impact_effects.js';
 
-// 系統核心模組初始化
 const i18n = new I18nManager();
 const controls = new DualTouchControls();
 const mekf = new FullStateMEKF();
@@ -27,11 +26,9 @@ const audio = new SpaceAudioManager();
 const impactFX = new ImpactFXManager(scene, camera);
 const clock = new THREE.Clock();
 
-// 解鎖 Web Audio
 window.addEventListener('touchstart', () => audio.init(), { once: true });
 window.addEventListener('click', () => audio.init(), { once: true });
 
-// UI 元素快取
 const reticle = document.getElementById('crosshair-reticle');
 const uiRange = document.getElementById('val-range');
 const uiRate = document.getElementById('val-rate');
@@ -49,71 +46,42 @@ const narrativeText = document.getElementById('narrative-text');
 const missionReport = document.getElementById('mission-report');
 const btnRestart = document.getElementById('btn-restart');
 
-// --- 智能捲起/折疊面板元素快取 ---
 const telemetryPanel = document.getElementById('telemetry-panel');
 const btnCollapse = document.getElementById('btn-collapse');
 const panelToggleHeader = document.getElementById('panel-toggle-header');
 
-let displayRange = 80.0, displaySpeed = 0.15, displayFuel = 300.0;
+let displayRange = 35.0, displaySpeed = 0.35, displayFuel = 300.0;
 let missionStartTime = 0;
 let isMissionActive = false;
 let isPanelCollapsed = false;
 
-// ==========================================
-// 智能面板折疊邏輯
-// ==========================================
 function updateCollapseButtonText() {
   if (!btnCollapse) return;
   const isZh = i18n.currentLang === 'zh-HK';
-  if (isPanelCollapsed) {
-    btnCollapse.textContent = isZh ? '🔽 展開' : '🔽 EXPAND';
-  } else {
-    btnCollapse.textContent = isZh ? '🔼 摺疊' : '🔼 MIN';
-  }
+  btnCollapse.textContent = isPanelCollapsed ? (isZh ? '🔽 展開' : '🔽 EXPAND') : (isZh ? '🔼 摺疊' : '🔼 MIN');
 }
 
 function toggleTelemetryPanel() {
   isPanelCollapsed = !isPanelCollapsed;
   if (telemetryPanel) {
-    if (isPanelCollapsed) {
-      telemetryPanel.classList.add('collapsed');
-    } else {
-      telemetryPanel.classList.remove('collapsed');
-    }
+    if (isPanelCollapsed) telemetryPanel.classList.add('collapsed');
+    else telemetryPanel.classList.remove('collapsed');
   }
   updateCollapseButtonText();
   if (typeof audio.playRadioBeep === 'function') audio.playRadioBeep();
 }
 
-if (panelToggleHeader) {
-  panelToggleHeader.onclick = toggleTelemetryPanel;
-}
+if (panelToggleHeader) panelToggleHeader.onclick = toggleTelemetryPanel;
 
-// ==========================================
-// 🎆 3A 特效：對接勝利煙火粒子系統 (Zero Allocation)
-// ==========================================
+// 煙火特效
 const FIREWORK_COUNT = 600;
 const fwGeo = new THREE.BufferGeometry();
 const fwPos = new Float32Array(FIREWORK_COUNT * 3);
 const fwVel = new Float32Array(FIREWORK_COUNT * 3);
 const fwCol = new Float32Array(FIREWORK_COUNT * 3);
-
-for (let i = 0; i < FIREWORK_COUNT; i++) {
-  fwPos[i * 3] = 0; fwPos[i * 3 + 1] = 0; fwPos[i * 3 + 2] = 0;
-  fwVel[i * 3] = 0; fwVel[i * 3 + 1] = 0; fwVel[i * 3 + 2] = 0;
-  fwCol[i * 3] = 1.0; fwCol[i * 3 + 1] = 0.8; fwCol[i * 3 + 2] = 0.2;
-}
-
 fwGeo.setAttribute('position', new THREE.BufferAttribute(fwPos, 3));
 fwGeo.setAttribute('color', new THREE.BufferAttribute(fwCol, 3));
-const fwMat = new THREE.PointsMaterial({
-  size: 2.2,
-  vertexColors: true,
-  transparent: true,
-  opacity: 0,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false
-});
+const fwMat = new THREE.PointsMaterial({ size: 2.2, vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
 const fireworkParticles = new THREE.Points(fwGeo, fwMat);
 scene.add(fireworkParticles);
 
@@ -156,7 +124,6 @@ function triggerSuccessFireworks(dockPos) {
   fwGeo.attributes.color.needsUpdate = true;
 }
 
-// 預先分配變數 (Zero Allocation)
 const _rawThrust = new THREE.Vector3();
 const _rawTorque = new THREE.Vector3();
 const _deltaThrust = new THREE.Vector3();
@@ -167,7 +134,6 @@ const _imuWrapper = { acc: null, gyro: null };
 let currentActualThrust = new THREE.Vector3();
 let currentActualTorque = new THREE.Vector3();
 
-// 敘事引擎
 let typeWriterTimeout = null;
 let typeWriterTick = null;
 let currentNarrativeKey = null;
@@ -197,14 +163,23 @@ function playNarrative(key, duration = 4000) {
 }
 
 function startNewMission() {
-  const randX = (Math.random() - 0.5) * 20;
-  const randZ = (Math.random() - 0.5) * 20;
-  engine.state[0] = randX; engine.state[1] = -80; engine.state[2] = randZ;
-  engine.state[3] = 0; engine.state[4] = 0.15; engine.state[5] = 0;
+  // 兒童模式距離縮短一半 (35m) 且更正對齊；其他模式維持 80m
+  const isKid = fsm.difficulty === Difficulty.KID;
+  const startDist = isKid ? -35.0 : -80.0;
+  const randX = (Math.random() - 0.5) * (isKid ? 8 : 20);
+  const randZ = (Math.random() - 0.5) * (isKid ? 8 : 20);
+  
+  engine.state[0] = randX;
+  engine.state[1] = startDist;
+  engine.state[2] = randZ;
+  engine.state[3] = 0;
+  engine.state[4] = isKid ? 0.35 : 0.15; // 兒童模式起步更快
+  engine.state[5] = 0;
+  
   engine.fuel = 300.0;
   currentActualThrust.set(0, 0, 0);
   currentActualTorque.set(0, 0, 0);
-  engine.omega.set((Math.random()-0.5)*0.02, (Math.random()-0.5)*0.02, 0);
+  engine.omega.set((Math.random()-0.5)*0.01, (Math.random()-0.5)*0.01, 0);
   
   missionStartTime = performance.now();
   isMissionActive = true;
@@ -212,7 +187,7 @@ function startNewMission() {
   fwMat.opacity = 0;
   if(missionReport) missionReport.classList.add('hidden');
   
-  if (fsm.difficulty === Difficulty.KID) {
+  if (isKid) {
     playNarrative('narrKid');
   } else if (fsm.difficulty === Difficulty.SCIENTIST) {
     playNarrative('narrSci');
@@ -225,13 +200,16 @@ if(btnRestart) btnRestart.onclick = () => { audio.playRadioBeep(); startNewMissi
 window.addEventListener('touchstart', () => { if(!isMissionActive) startNewMission(); }, {once: true});
 window.addEventListener('click', () => { if(!isMissionActive) startNewMission(); }, {once: true});
 
-// 難度仲裁系統
-let diffIndex = 1;
+// 難度仲裁
+let diffIndex = 0; // 預設直接開「🧒 兒童模式」
 const diffLevels = [Difficulty.KID, Difficulty.PRO, Difficulty.SCIENTIST];
 const diffKeys = ['diffKid', 'diffPro', 'diffSci'];
 
+fsm.setDifficulty(Difficulty.KID);
+engine.thrustMultiplier = 6.0; // 兒童版推力加到 6 倍
 btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
-btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
+btnDiff.style.borderColor = '#00ffaa';
+btnDiff.style.color = '#00ffaa';
 
 btnDiff.onclick = () => {
   diffIndex = (diffIndex + 1) % diffLevels.length;
@@ -243,7 +221,7 @@ btnDiff.onclick = () => {
     btnDiff.style.borderColor = '#00ffaa';
     btnDiff.style.color = '#00ffaa';
     btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
-    engine.thrustMultiplier = 4.0;
+    engine.thrustMultiplier = 6.0; // 6 倍平移推力
   } else if (currentDiff === Difficulty.SCIENTIST) {
     btnDiff.style.borderColor = '#ff3344';
     btnDiff.style.color = '#ff3344';
@@ -253,7 +231,7 @@ btnDiff.onclick = () => {
     btnDiff.style.borderColor = '#ffaa00';
     btnDiff.style.color = '#ffaa00';
     btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
-    engine.thrustMultiplier = 1.5;
+    engine.thrustMultiplier = 1.8;
   }
   audio.playRadioBeep();
   if(isMissionActive) startNewMission();
@@ -294,7 +272,7 @@ document.getElementById('btn-lang').onclick = () => {
 
 let eggClicks = 0;
 document.getElementById('title-tag').onclick = (e) => {
-  e.stopPropagation(); // 避免點擊彩蛋觸發折疊
+  e.stopPropagation();
   if (fsm.difficulty === Difficulty.SCIENTIST) {
     alert(i18n.t('alertSci'));
     return;
@@ -302,7 +280,7 @@ document.getElementById('title-tag').onclick = (e) => {
   eggClicks++;
   if (eggClicks === 3) {
     alert(i18n.t('alertBird'));
-    engine.thrustMultiplier = 2.5;
+    engine.thrustMultiplier = 8.0;
     uiFsm.textContent = "FIRE BIRD OVERRIDE";
     audio.playRadioBeep();
   }
@@ -317,18 +295,21 @@ function animate() {
   const now = performance.now();
 
   _rawThrust.set(controls.transInput.x, 0, -controls.transInput.y);
-  _rawTorque.set(controls.rotInput.y * 0.4, -controls.rotInput.x * 0.4, 0);
+  _rawTorque.set(controls.rotInput.y * 0.5, -controls.rotInput.x * 0.5, 0);
 
   const currentDist = engine.state[0]**2 + engine.state[1]**2 + engine.state[2]**2;
-  if (fsm.assistMagnet && currentDist < 16.0 && fsm.mode !== MissionModes.ABORT) {
-    _rawThrust.x -= engine.state[0] * 0.05;
-    _rawThrust.y -= engine.state[2] * 0.05;
+  
+  // 兒童模式磁吸引導更強
+  if (fsm.assistMagnet && currentDist < 25.0 && fsm.mode !== MissionModes.ABORT) {
+    const magnetPower = fsm.difficulty === Difficulty.KID ? 0.12 : 0.05;
+    _rawThrust.x -= engine.state[0] * magnetPower;
+    _rawThrust.y -= engine.state[2] * magnetPower;
   }
   if (fsm.mode === MissionModes.ABORT) _rawThrust.set(0, 0, -1.0);
 
   const massRatio = 3300.0 / (engine.massDry + engine.fuel); 
-  const maxThrustRate = 3.5 * massRatio; 
-  const maxTorqueRate = 4.0 * massRatio; 
+  const maxThrustRate = (fsm.difficulty === Difficulty.KID ? 8.0 : 3.5) * massRatio; 
+  const maxTorqueRate = 5.0 * massRatio; 
 
   _deltaThrust.subVectors(_rawThrust, currentActualThrust);
   if (_deltaThrust.lengthSq() > (maxThrustRate * dt) ** 2) {
@@ -355,7 +336,6 @@ function animate() {
     mekf.update(syncdData.starQuat, syncdData.lidarPos, null, true, true);
   }
 
-  // 鏡頭抖動 (Shake) 特效
   if (screenShake > 0.001) {
     camera.position.set(
       phys.pos.x + (Math.random() - 0.5) * screenShake,
@@ -377,7 +357,7 @@ function animate() {
   const speed = phys.vel.length();
   _euler.setFromQuaternion(mekf.qNominal);
 
-  const lerpUI = 0.12;
+  const lerpUI = 0.15;
   displayRange += (dist - displayRange) * lerpUI;
   displaySpeed += (speed - displaySpeed) * lerpUI;
   displayFuel += (phys.fuel - displayFuel) * lerpUI;
@@ -386,18 +366,17 @@ function animate() {
   uiRate.textContent = displaySpeed.toFixed(2);
   uiFuel.textContent = displayFuel.toFixed(1);
   uiAlt.textContent = (400 + (phys.pos.y + 80) / 1000).toFixed(1);
-  uiRpy.textContent = `${THREE.MathUtils.radToDeg(_euler.x).toFixed(1)}/${THREE.MathUtils.radToDeg(_euler.y).toFixed(1)}/${THREE.MathUtils.radToDeg(_euler.z).toFixed(1)}`;
+  uiRpy.textContent = `${THREE.MathUtils.radToDeg(_euler.x).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.y).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.z).toFixed(0)}`;
   uiOffset.textContent = Math.hypot(phys.pos.x, phys.pos.z).toFixed(2);
 
-  // 3A 進度計算
-  const progressVal = Math.min(100, Math.max(0, (1.0 - (dist - 1.5) / 78.5) * 100));
+  const totalDist = fsm.difficulty === Difficulty.KID ? 35.0 : 80.0;
+  const progressVal = Math.min(100, Math.max(0, (1.0 - (dist - 1.5) / totalDist) * 100));
   uiProgress.textContent = `${progressVal.toFixed(0)}%`;
 
-  // 3A 視覺色彩漸變反饋
   if (dist < 6.0) {
     uiRange.style.color = '#00ffaa';
     uiRange.style.textShadow = '0 0 12px #00ffaa';
-  } else if (dist < 20.0) {
+  } else if (dist < 18.0) {
     uiRange.style.color = '#ffaa00';
     uiRange.style.textShadow = '0 0 8px #ffaa00';
   } else {
@@ -405,8 +384,7 @@ function animate() {
     uiRange.style.textShadow = 'none';
   }
 
-  // 速度超限呼吸燈提示
-  if (speed > fsm.maxSafeApproachSpeed && dist < 20.0) {
+  if (speed > fsm.maxSafeApproachSpeed && dist < 15.0) {
     uiRate.style.color = '#ff3355';
     const glow = 8 + Math.sin(now / 150) * 6;
     uiRate.style.textShadow = `0 0 ${glow}px #ff3355`;
@@ -417,15 +395,16 @@ function animate() {
 
   if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(dist);
 
-  const fsmResult = fsm.evaluate(dist, speed);
+  // 傳入相對 Z 深度判定是否衝過頭
+  const fsmResult = fsm.evaluate(dist, speed, phys.pos.y + 10.5);
   
   if (!impactFX.isExploding && isMissionActive) {
     uiFsm.textContent = i18n.t(fsmResult.statusKey);
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
-  // 失敗處理
-  if (fsmResult.statusKey === 'statusOverSpeed' && dist < fsm.dockingThreshold && !impactFX.isExploding && isMissionActive) {
+  // 致命超速碰撞
+  if (fsmResult.statusKey === 'statusOverSpeed' && !impactFX.isExploding && isMissionActive) {
     isMissionActive = false;
     audio.playExplosion();
     playNarrative('narrFail', 3000);
@@ -444,7 +423,7 @@ function animate() {
     });
   }
 
-  // 成功硬對接觸發勝利煙火
+  // 成功硬對接
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
     if(typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
@@ -455,11 +434,11 @@ function animate() {
     setTimeout(() => {
       const timeTaken = ((performance.now() - missionStartTime) / 1000).toFixed(1);
       const fuelLeft = phys.fuel.toFixed(1);
-      const errAngle = THREE.MathUtils.radToDeg(_euler.x**2 + _euler.y**2 + _euler.z**2).toFixed(2);
+      const errAngle = THREE.MathUtils.radToDeg(_euler.x**2 + _euler.y**2 + _euler.z**2).toFixed(1);
       
       let grade = 'C';
-      if (fuelLeft > 250 && errAngle < 2.0) grade = 'S';
-      else if (fuelLeft > 200 && errAngle < 5.0) grade = 'A';
+      if (fuelLeft > 250 && errAngle < 3.0) grade = 'S';
+      else if (fuelLeft > 200 && errAngle < 6.0) grade = 'A';
       else if (fuelLeft > 100) grade = 'B';
       
       if(missionReport) {
@@ -470,10 +449,9 @@ function animate() {
         document.getElementById('score-error').textContent = errAngle;
         missionReport.classList.remove('hidden');
       }
-    }, 2500);
+    }, 2000);
   }
 
-  // 煙火粒子步進
   if (isFireworksActive) {
     fireworkTimer += dt;
     const pos = fwGeo.attributes.position.array;
@@ -490,7 +468,6 @@ function animate() {
     if (fireworkTimer > 2.5) isFireworksActive = false;
   }
 
-  // 動態環境
   if (clouds) clouds.rotation.y += dt * 0.003;
   if (clouds2) clouds2.rotation.y += dt * 0.007;
   if (earthShaderMat && earthShaderMat.uniforms.uTime) {
