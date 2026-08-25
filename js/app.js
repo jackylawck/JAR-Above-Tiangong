@@ -11,7 +11,7 @@ import { setupStationScene } from './render/station_scene.js';
 import { SpaceAudioManager } from './audio/space_audio.js';
 import { ImpactFXManager } from './render/impact_effects.js';
 
-// 系統初始化
+// 系統核心模組初始化
 const i18n = new I18nManager();
 const controls = new DualTouchControls();
 const mekf = new FullStateMEKF();
@@ -19,12 +19,12 @@ const fdir = new FDIRSystem();
 const sync = new TimeSynchronizer(0.5);
 const fsm = new MissionFSM();
 const engine = new SpacecraftEngine();
-const { renderer, scene, camera, targetRingPos } = setupStationScene();
+const { renderer, scene, camera, targetRingPos, earthShaderMat, clouds } = setupStationScene();
 const audio = new SpaceAudioManager();
 const impactFX = new ImpactFXManager(scene, camera);
 const clock = new THREE.Clock();
 
-// 解鎖 Web Audio (符合瀏覽器 Autoplay 規範)
+// 解鎖 Web Audio
 window.addEventListener('touchstart', () => audio.init(), { once: true });
 window.addEventListener('click', () => audio.init(), { once: true });
 
@@ -41,9 +41,11 @@ const uiCov = document.getElementById('val-cov');
 const btnDiff = document.getElementById('btn-diff');
 const btnMode = document.getElementById('btn-mode');
 const btnAbort = document.getElementById('btn-abort');
-const hudOverlay = document.getElementById('hud-overlay');
 
-// --- 難度切換 (CAS) ---
+// --- UI 動畫狀態變數 (Juice) ---
+let displayRange = 80.0, displaySpeed = 0.15, displayFuel = 300.0;
+
+// --- 難度仲裁系統 (CAS) ---
 let diffIndex = 1; // 預設 PRO
 const diffLevels = [Difficulty.KID, Difficulty.PRO, Difficulty.SCIENTIST];
 const diffLabels = ['🧒 兒童模式', '🛠️ 進階模式', '🔬 科學模式'];
@@ -58,7 +60,7 @@ btnDiff.onclick = () => {
     btnDiff.style.borderColor = '#ff3344';
     btnDiff.style.color = '#ff3344';
     btnMode.textContent = i18n.currentLang === 'zh-HK' ? '模式: 手動 (鎖定)' : 'MODE: MANUAL (LOCKED)';
-    engine.thrustMultiplier = 1.0; // 科學家模式嚴格禁止彩蛋過載
+    engine.thrustMultiplier = 1.0;
   } else {
     btnDiff.style.borderColor = '#ffaa00';
     btnDiff.style.color = '#ffaa00';
@@ -67,7 +69,6 @@ btnDiff.onclick = () => {
   audio.playRadioBeep();
 };
 
-// --- 操作模式切換 ---
 btnMode.onclick = () => {
   if (fsm.difficulty === Difficulty.SCIENTIST) return;
   const newMode = fsm.mode === MissionModes.AUTO ? MissionModes.MANUAL : MissionModes.AUTO;
@@ -76,7 +77,6 @@ btnMode.onclick = () => {
   audio.playRadioBeep();
 };
 
-// --- 緊急中止 ---
 btnAbort.onclick = () => {
   fsm.setMode(MissionModes.ABORT);
   uiFsm.textContent = i18n.t('statusAbort');
@@ -85,13 +85,12 @@ btnAbort.onclick = () => {
   if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
 };
 
-// --- 雙語切換 ---
 document.getElementById('btn-lang').onclick = () => {
   i18n.toggleLanguage();
   btnMode.textContent = i18n.currentLang === 'zh-HK' ? `模式: ${fsm.mode}` : `MODE: ${fsm.mode}`;
 };
 
-// --- 暗號彩蛋：火鷹 (FIRE BIRD) ---
+// 暗號彩蛋：火鷹 (FIRE BIRD)
 let eggClicks = 0;
 document.getElementById('title-tag').onclick = () => {
   if (fsm.difficulty === Difficulty.SCIENTIST) {
@@ -108,6 +107,12 @@ document.getElementById('title-tag').onclick = () => {
 };
 
 // ==========================================
+// 物理執行機構變化率限幅器 (Rate Limiter)
+// ==========================================
+let currentActualThrust = new THREE.Vector3();
+let currentActualTorque = new THREE.Vector3();
+
+// ==========================================
 // 系統主迴圈 (Main Pipeline Loop)
 // ==========================================
 function animate() {
@@ -115,74 +120,128 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const now = performance.now();
 
-  let thrustCmd = new THREE.Vector3(controls.transInput.x, 0, -controls.transInput.y);
-  let torqueCmd = new THREE.Vector3(controls.rotInput.y * 0.4, -controls.rotInput.x * 0.4, 0);
+  // 1. 取得玩家原始輸入
+  const rawThrust = new THREE.Vector3(controls.transInput.x, 0, -controls.transInput.y);
+  const rawTorque = new THREE.Vector3(controls.rotInput.y * 0.4, -controls.rotInput.x * 0.4, 0);
 
-  // 磁力吸附輔助 (進階/兒童模式)
+  // 磁力吸附輔助
   const currentDist = engine.state[0]**2 + engine.state[1]**2 + engine.state[2]**2;
   if (fsm.assistMagnet && currentDist < 16.0 && fsm.mode !== MissionModes.ABORT) {
-    thrustCmd.x -= engine.state[0] * 0.05;
-    thrustCmd.y -= engine.state[2] * 0.05;
+    rawThrust.x -= engine.state[0] * 0.05;
+    rawThrust.y -= engine.state[2] * 0.05;
   }
 
   if (fsm.mode === MissionModes.ABORT) {
-    thrustCmd.set(0, 0, -1.0);
+    rawThrust.set(0, 0, -1.0);
   }
 
-  // 1. 物理推進
-  const phys = engine.step(dt, thrustCmd, torqueCmd);
+  // 2. RCS 閥門動態響應限制 (Rate Limiting)
+  const totalMass = engine.massDry + engine.fuel;
+  const massRatio = 3300.0 / totalMass; 
+  
+  const maxThrustRate = 3.5 * massRatio; 
+  const maxTorqueRate = 4.0 * massRatio; 
 
-  // 2. 感測器採樣並送入時間同步緩存 (80ms 延遲補償)
+  const deltaThrust = new THREE.Vector3().subVectors(rawThrust, currentActualThrust);
+  if (deltaThrust.length() > maxThrustRate * dt) {
+    deltaThrust.normalize().multiplyScalar(maxThrustRate * dt);
+  }
+  currentActualThrust.add(deltaThrust);
+
+  const deltaTorque = new THREE.Vector3().subVectors(rawTorque, currentActualTorque);
+  if (deltaTorque.length() > maxTorqueRate * dt) {
+    deltaTorque.normalize().multiplyScalar(maxTorqueRate * dt);
+  }
+  currentActualTorque.add(deltaTorque);
+
+  // 3. 推進物理引擎
+  const phys = engine.step(dt, currentActualThrust, currentActualTorque);
+
+  // 4. 感測器採樣並送入時間同步緩存
   const starQuat = fdir.voteStarSensors(phys.quat);
   sync.pushSample(now, { acc: phys.accBody, gyro: engine.omega }, phys.pos, starQuat);
 
-  // 3. MEKF 狀態估計
+  // 5. MEKF 狀態估計
   const syncdData = sync.getInterpolatedSample(now - 40);
   if (syncdData) {
     mekf.predict(dt, syncdData.gyro, syncdData.acc);
     mekf.update(syncdData.starQuat, syncdData.lidarPos, null, true, true);
   }
 
-  // 4. 第一人稱視角更新
+  // 6. 視角更新與投影
   camera.position.copy(phys.pos);
   camera.quaternion.copy(mekf.qNominal);
 
-  // 5. CBARS 準心投影
   const screenPos = targetRingPos.clone().project(camera);
   const cx = (screenPos.x * window.innerWidth) / 2;
   const cy = (-screenPos.y * window.innerHeight) / 2;
   reticle.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
 
-  // 6. 遙測數據計算與更新
+  // 7. 遙測數據計算
   const dist = phys.pos.length();
   const speed = phys.vel.length();
   const euler = new THREE.Euler().setFromQuaternion(mekf.qNominal, 'YXZ');
 
-  uiRange.textContent = dist.toFixed(2);
-  uiRate.textContent = speed.toFixed(2);
-  uiFuel.textContent = phys.fuel.toFixed(1);
+  // --- AAA 級包裝：HUD 數值滾動動畫 (Lerp UI) ---
+  const lerpUI = 0.12;
+  displayRange += (dist - displayRange) * lerpUI;
+  displaySpeed += (speed - displaySpeed) * lerpUI;
+  displayFuel += (phys.fuel - displayFuel) * lerpUI;
+
+  uiRange.textContent = displayRange.toFixed(2);
+  uiRate.textContent = displaySpeed.toFixed(2);
+  uiFuel.textContent = displayFuel.toFixed(1);
+  
   uiAlt.textContent = (400 + (phys.pos.y + 80) / 1000).toFixed(1);
   uiRpy.textContent = `${THREE.MathUtils.radToDeg(euler.x).toFixed(1)}/${THREE.MathUtils.radToDeg(euler.y).toFixed(1)}/${THREE.MathUtils.radToDeg(euler.z).toFixed(1)}`;
   uiOffset.textContent = Math.hypot(phys.pos.x, phys.pos.z).toFixed(2);
   uiCov.textContent = (mekf.P[0][0] + mekf.P[4][4]).toFixed(4);
 
-  // 7. 任務狀態評估與碰撞判定
+  // 8. 狀態機評估與碰撞處理
   const fsmResult = fsm.evaluate(dist, speed);
-  uiFsm.textContent = i18n.t(fsmResult.statusKey);
-  uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
+  
+  // 當沒有在爆炸狀態時，才正常更新狀態字眼
+  if (!impactFX.isExploding) {
+    uiFsm.textContent = i18n.t(fsmResult.statusKey);
+    uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
+  }
 
-  // 碰撞解體與自動重啟
-  if (fsmResult.statusKey === 'statusOverSpeed' && dist < fsm.dockingThreshold) {
+  // --- AAA 級包裝：碰撞失敗的情感過渡 (絕望凝視) ---
+  if (fsmResult.statusKey === 'statusOverSpeed' && dist < fsm.dockingThreshold && !impactFX.isExploding) {
     audio.playExplosion();
+    
+    // 立即將狀態鎖定為血紅色的任務失敗
+    uiFsm.textContent = '💀 任務失敗 (MISSION FAILED)';
+    uiFsm.style.color = '#ff3355';
+    uiFsm.style.fontSize = '16px';
+    uiFsm.style.fontWeight = 'bold';
+    uiFsm.className = ''; 
+
     impactFX.triggerCatastrophicFailure(phys.pos, () => {
-      engine.state = [0, -80, 0, 0, 0.15, 0];
-      engine.fuel = 300.0;
-      fsm.setMode(MissionModes.AUTO);
-      audio.playRadioBeep();
+      // 在 3.2 秒爆炸結束後，再追加 2 秒的「絕望真空期」，然後才重啟
+      setTimeout(() => {
+        engine.state = [0, -80, 0, 0, 0.15, 0];
+        engine.fuel = 300.0;
+        currentActualThrust.set(0, 0, 0);
+        currentActualTorque.set(0, 0, 0);
+        fsm.setMode(MissionModes.AUTO);
+        
+        // 還原 UI 樣式
+        uiFsm.style.color = '';
+        uiFsm.style.fontSize = '';
+        uiFsm.style.fontWeight = '';
+        
+        audio.playRadioBeep();
+      }, 2000);
     });
   }
 
-  // 特效與渲染器更新
+  // 9. 更新地球 GPU Shader 與雲層動態
+  if (earthShaderMat && earthShaderMat.uniforms.uTime) {
+    earthShaderMat.uniforms.uTime.value = now * 0.001;
+  }
+  if (clouds) clouds.rotation.y += dt * 0.005;
+
   impactFX.update(dt);
   renderer.render(scene, camera);
 }
