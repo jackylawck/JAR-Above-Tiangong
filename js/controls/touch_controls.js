@@ -11,7 +11,8 @@ export class DualTouchControls {
     this.zoneRot = document.getElementById('zone-rot');
     this.knobRot = document.getElementById('knob-rot');
 
-    this.maxRadius = 38; // 搖桿最大滑動半徑 (px)
+    this.maxRadius = 38; // 搖桿半徑
+    this.deadZone = 0.12; // 12% 物理死區，防止手指微顫造成漂移
     this.transTouchId = null;
     this.rotTouchId = null;
 
@@ -19,20 +20,20 @@ export class DualTouchControls {
   }
 
   initEvents() {
-    // 平移搖桿監聽
+    // 平移搖桿
     if (this.zoneTrans) {
       this.zoneTrans.addEventListener('touchstart', (e) => {
         e.preventDefault();
         const touch = e.changedTouches[0];
         this.transTouchId = touch.identifier;
-        this.updateJoystick(touch, this.zoneTrans, this.knobTrans, this.transInput);
+        this.updateJoystick(touch, this.zoneTrans, this.knobTrans, this.transInput, false);
       }, { passive: false });
 
       this.zoneTrans.addEventListener('touchmove', (e) => {
         e.preventDefault();
         for (let i = 0; i < e.changedTouches.length; i++) {
           if (e.changedTouches[i].identifier === this.transTouchId) {
-            this.updateJoystick(e.changedTouches[i], this.zoneTrans, this.knobTrans, this.transInput);
+            this.updateJoystick(e.changedTouches[i], this.zoneTrans, this.knobTrans, this.transInput, false);
           }
         }
       }, { passive: false });
@@ -50,20 +51,20 @@ export class DualTouchControls {
       this.zoneTrans.addEventListener('touchcancel', resetTrans);
     }
 
-    // 姿態搖桿監聽
+    // 姿態搖桿 (高精度細膩控制)
     if (this.zoneRot) {
       this.zoneRot.addEventListener('touchstart', (e) => {
         e.preventDefault();
         const touch = e.changedTouches[0];
         this.rotTouchId = touch.identifier;
-        this.updateJoystick(touch, this.zoneRot, this.knobRot, this.rotInput);
+        this.updateJoystick(touch, this.zoneRot, this.knobRot, this.rotInput, true);
       }, { passive: false });
 
       this.zoneRot.addEventListener('touchmove', (e) => {
         e.preventDefault();
         for (let i = 0; i < e.changedTouches.length; i++) {
           if (e.changedTouches[i].identifier === this.rotTouchId) {
-            this.updateJoystick(e.changedTouches[i], this.zoneRot, this.knobRot, this.rotInput);
+            this.updateJoystick(e.changedTouches[i], this.zoneRot, this.knobRot, this.rotInput, true);
           }
         }
       }, { passive: false });
@@ -82,7 +83,7 @@ export class DualTouchControls {
     }
   }
 
-  updateJoystick(touch, zone, knob, outVector) {
+  updateJoystick(touch, zone, knob, outVector, isRotation) {
     const rect = zone.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
@@ -97,6 +98,18 @@ export class DualTouchControls {
     }
 
     knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-    outVector.set(dx / this.maxRadius, -dy / this.maxRadius);
+
+    let normX = dx / this.maxRadius;
+    let normY = -dy / this.maxRadius;
+    const normDist = Math.hypot(normX, normY);
+
+    if (normDist < this.deadZone) {
+      outVector.set(0, 0);
+    } else {
+      // 二次方平滑曲線 (Expo Curve)：輕推微調，推到底全推力
+      const factor = (normDist - this.deadZone) / (1.0 - this.deadZone);
+      const curvedSpeed = factor * factor; // 柔和響應
+      outVector.set((normX / normDist) * curvedSpeed, (normY / normDist) * curvedSpeed);
+    }
   }
 }
