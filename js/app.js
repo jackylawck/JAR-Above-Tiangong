@@ -272,14 +272,13 @@ function animate() {
 
   const isKid = fsm.difficulty === Difficulty.KID;
 
-  // 平移指令
+  // 平移與姿態指令映射
   _rawThrust.set(
     controls.transInput.x * 2.5,
     0,
     -controls.transInput.y * 3.5
   );
   
-  // 姿態指令：精確平穩力矩
   _rawTorque.set(
     controls.rotInput.y * 0.4,
     -controls.rotInput.x * 0.4,
@@ -292,18 +291,18 @@ function animate() {
     engine.state[2] - targetRingPos.z
   );
 
-  // 🚀 兒童模式：終端自動對準與微速進近
+  // 兒童模式：終端自動導正
   if (isKid && isMissionActive && fsm.mode !== MissionModes.ABORT) {
-    if (Math.abs(controls.transInput.y) < 0.05 && engine.state[5] > -0.15 && distToRing > 0.8) {
-      _rawThrust.z -= 0.4;
+    if (Math.abs(controls.transInput.y) < 0.05 && engine.state[5] > -0.15 && distToRing > 0.5) {
+      _rawThrust.z -= 0.35;
     }
     if (distToRing < 20.0) {
-      _rawThrust.x -= (engine.state[0] - targetRingPos.x) * 0.2;
-      _rawThrust.y -= (engine.state[1] - targetRingPos.y) * 0.2;
+      _rawThrust.x -= (engine.state[0] - targetRingPos.x) * 0.18;
+      _rawThrust.y -= (engine.state[1] - targetRingPos.y) * 0.18;
     }
   }
 
-  // 🚀 關鍵修復：對接鎖定時物理煞停，徹底防止穿模撞入球體內部
+  // 🚀 物理剛體防穿模：對接成功時強制煞停
   if (!isMissionActive) {
     _rawThrust.set(0, 0, 0);
     _rawTorque.set(0, 0, 0);
@@ -384,9 +383,18 @@ function animate() {
     uiRange.style.textShadow = 'none';
   }
 
+  if (speed > fsm.maxSafeApproachSpeed && distToRing < 15.0) {
+    uiRate.style.color = '#ff3355';
+    const glow = 8 + Math.sin(now / 150) * 6;
+    uiRate.style.textShadow = `0 0 ${glow}px #ff3355`;
+  } else {
+    uiRate.style.color = '#ffffff';
+    uiRate.style.textShadow = 'none';
+  }
+
   if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(distToRing);
 
-  // 狀態機評估 (傳入對接距離與飛船 Z 座標)
+  // 狀態評估
   const fsmResult = fsm.evaluate(distToRing, speed, phys.pos.z);
   
   if (!impactFX.isExploding && isMissionActive) {
@@ -394,7 +402,7 @@ function animate() {
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
-  // 失敗碰撞
+  // 碰撞解體
   if (fsmResult.statusKey === 'statusOverSpeed' && !impactFX.isExploding && isMissionActive) {
     isMissionActive = false;
     audio.playExplosion();
@@ -414,11 +422,11 @@ function animate() {
     });
   }
 
-  // 🚀 成功硬對接 (Hard Dock)
+  // 🚀 成功硬對接
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
     
-    // 飛船精確固定在對接口前 0.25 米，呈現最佳視覺畫面
+    // 飛船精確固定在對接口前端 0.25 米，清晰展現對接爪
     engine.state[0] = targetRingPos.x;
     engine.state[1] = targetRingPos.y;
     engine.state[2] = targetRingPos.z + 0.25;
