@@ -164,7 +164,7 @@ function startNewMission() {
   const isKid = fsm.difficulty === Difficulty.KID;
   const startDist = isKid ? 35.0 : 80.0;
   
-  engine.state[0] = 0; // 居中開局
+  engine.state[0] = 0;
   engine.state[1] = 0;
   engine.state[2] = startDist;
   engine.state[3] = 0;
@@ -272,32 +272,45 @@ function animate() {
 
   const isKid = fsm.difficulty === Difficulty.KID;
 
-  // 1. 平移輸入映射
+  // 平移指令
   _rawThrust.set(
     controls.transInput.x * 2.5,
     0,
     -controls.transInput.y * 3.5
   );
   
-  // 2. 姿態輸入映射：調整為細膩線性的 0.45 係數
+  // 姿態指令：精確平穩力矩
   _rawTorque.set(
-    controls.rotInput.y * 0.45,
-    -controls.rotInput.x * 0.45,
+    controls.rotInput.y * 0.4,
+    -controls.rotInput.x * 0.4,
     0
   );
 
-  const currentDist = Math.hypot(engine.state[0], engine.state[1], engine.state[2] - targetRingPos.z);
+  const distToRing = Math.hypot(
+    engine.state[0] - targetRingPos.x,
+    engine.state[1] - targetRingPos.y,
+    engine.state[2] - targetRingPos.z
+  );
 
-  // 兒童模式自動輔助
+  // 🚀 兒童模式：終端自動對準與微速進近
   if (isKid && isMissionActive && fsm.mode !== MissionModes.ABORT) {
-    if (Math.abs(controls.transInput.y) < 0.05 && engine.state[5] > -0.15) {
+    if (Math.abs(controls.transInput.y) < 0.05 && engine.state[5] > -0.15 && distToRing > 0.8) {
       _rawThrust.z -= 0.4;
     }
-    // 磁吸對心
-    if (currentDist < 25.0) {
-      _rawThrust.x -= engine.state[0] * 0.15;
-      _rawThrust.y -= engine.state[1] * 0.15;
+    if (distToRing < 20.0) {
+      _rawThrust.x -= (engine.state[0] - targetRingPos.x) * 0.2;
+      _rawThrust.y -= (engine.state[1] - targetRingPos.y) * 0.2;
     }
+  }
+
+  // 🚀 關鍵修復：對接鎖定時物理煞停，徹底防止穿模撞入球體內部
+  if (!isMissionActive) {
+    _rawThrust.set(0, 0, 0);
+    _rawTorque.set(0, 0, 0);
+    engine.state[3] = 0;
+    engine.state[4] = 0;
+    engine.state[5] = 0;
+    engine.omega.set(0, 0, 0);
   }
 
   if (fsm.mode === MissionModes.ABORT) _rawThrust.set(0, 0, 1.0);
@@ -341,7 +354,6 @@ function animate() {
   const cy = (-_screenPos.y * window.innerHeight) / 2;
   reticle.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
 
-  const distToRing = phys.pos.distanceTo(targetRingPos);
   const speed = phys.vel.length();
   _euler.setFromQuaternion(phys.quat);
 
@@ -350,21 +362,21 @@ function animate() {
   displaySpeed += (speed - displaySpeed) * lerpUI;
   displayFuel += (phys.fuel - displayFuel) * lerpUI;
 
-  uiRange.textContent = displayRange.toFixed(2);
+  uiRange.textContent = Math.max(0, displayRange).toFixed(2);
   uiRate.textContent = displaySpeed.toFixed(2);
   uiFuel.textContent = displayFuel.toFixed(1);
   uiAlt.textContent = (400 + (35 - phys.pos.z) / 1000).toFixed(1);
   uiRpy.textContent = `${THREE.MathUtils.radToDeg(_euler.x).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.y).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.z).toFixed(0)}`;
-  uiOffset.textContent = Math.hypot(phys.pos.x, phys.pos.y).toFixed(2);
+  uiOffset.textContent = Math.hypot(phys.pos.x - targetRingPos.x, phys.pos.y - targetRingPos.y).toFixed(2);
 
   const totalDist = isKid ? 35.0 : 80.0;
-  const progressVal = Math.min(100, Math.max(0, (1.0 - (distToRing - 1.5) / totalDist) * 100));
+  const progressVal = Math.min(100, Math.max(0, (1.0 - displayRange / totalDist) * 100));
   uiProgress.textContent = `${progressVal.toFixed(0)}%`;
 
-  if (distToRing < 6.0) {
+  if (distToRing < 3.0) {
     uiRange.style.color = '#00ffaa';
     uiRange.style.textShadow = '0 0 12px #00ffaa';
-  } else if (distToRing < 18.0) {
+  } else if (distToRing < 12.0) {
     uiRange.style.color = '#ffaa00';
     uiRange.style.textShadow = '0 0 8px #ffaa00';
   } else {
@@ -372,24 +384,17 @@ function animate() {
     uiRange.style.textShadow = 'none';
   }
 
-  if (speed > fsm.maxSafeApproachSpeed && distToRing < 15.0) {
-    uiRate.style.color = '#ff3355';
-    const glow = 8 + Math.sin(now / 150) * 6;
-    uiRate.style.textShadow = `0 0 ${glow}px #ff3355`;
-  } else {
-    uiRate.style.color = '#ffffff';
-    uiRate.style.textShadow = 'none';
-  }
-
   if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(distToRing);
 
-  const fsmResult = fsm.evaluate(distToRing, speed, -phys.pos.z);
+  // 狀態機評估 (傳入對接距離與飛船 Z 座標)
+  const fsmResult = fsm.evaluate(distToRing, speed, phys.pos.z);
   
   if (!impactFX.isExploding && isMissionActive) {
     uiFsm.textContent = i18n.t(fsmResult.statusKey);
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
+  // 失敗碰撞
   if (fsmResult.statusKey === 'statusOverSpeed' && !impactFX.isExploding && isMissionActive) {
     isMissionActive = false;
     audio.playExplosion();
@@ -409,12 +414,19 @@ function animate() {
     });
   }
 
+  // 🚀 成功硬對接 (Hard Dock)
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
+    
+    // 飛船精確固定在對接口前 0.25 米，呈現最佳視覺畫面
+    engine.state[0] = targetRingPos.x;
+    engine.state[1] = targetRingPos.y;
+    engine.state[2] = targetRingPos.z + 0.25;
+    
     if(typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
     playNarrative('narrSuccess', 5000);
     
-    triggerSuccessFireworks(phys.pos);
+    triggerSuccessFireworks(targetRingPos);
 
     setTimeout(() => {
       const timeTaken = ((performance.now() - missionStartTime) / 1000).toFixed(1);
@@ -462,6 +474,10 @@ function animate() {
   if (corona) {
     const pulse = 1.0 + 0.06 * Math.sin(now / 1500);
     corona.scale.set(180 * pulse, 180 * pulse, 1);
+  }
+
+  if (station) {
+    station.rotation.y = Math.sin(now * 0.0005) * 0.002;
   }
 
   if (beacons) {
