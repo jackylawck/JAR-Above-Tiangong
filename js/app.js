@@ -49,9 +49,45 @@ const narrativeText = document.getElementById('narrative-text');
 const missionReport = document.getElementById('mission-report');
 const btnRestart = document.getElementById('btn-restart');
 
+// --- 智能捲起/折疊面板元素快取 ---
+const telemetryPanel = document.getElementById('telemetry-panel');
+const btnCollapse = document.getElementById('btn-collapse');
+const panelToggleHeader = document.getElementById('panel-toggle-header');
+
 let displayRange = 80.0, displaySpeed = 0.15, displayFuel = 300.0;
 let missionStartTime = 0;
 let isMissionActive = false;
+let isPanelCollapsed = false;
+
+// ==========================================
+// 智能面板折疊邏輯
+// ==========================================
+function updateCollapseButtonText() {
+  if (!btnCollapse) return;
+  const isZh = i18n.currentLang === 'zh-HK';
+  if (isPanelCollapsed) {
+    btnCollapse.textContent = isZh ? '🔽 展開' : '🔽 EXPAND';
+  } else {
+    btnCollapse.textContent = isZh ? '🔼 摺疊' : '🔼 MIN';
+  }
+}
+
+function toggleTelemetryPanel() {
+  isPanelCollapsed = !isPanelCollapsed;
+  if (telemetryPanel) {
+    if (isPanelCollapsed) {
+      telemetryPanel.classList.add('collapsed');
+    } else {
+      telemetryPanel.classList.remove('collapsed');
+    }
+  }
+  updateCollapseButtonText();
+  if (typeof audio.playRadioBeep === 'function') audio.playRadioBeep();
+}
+
+if (panelToggleHeader) {
+  panelToggleHeader.onclick = toggleTelemetryPanel;
+}
 
 // ==========================================
 // 🎆 3A 特效：對接勝利煙火粒子系統 (Zero Allocation)
@@ -89,7 +125,7 @@ function triggerSuccessFireworks(dockPos) {
   isFireworksActive = true;
   fireworkTimer = 0;
   fwMat.opacity = 1.0;
-  screenShake = 0.25; // 激發鏡頭震顫
+  screenShake = 0.25;
 
   const posAttr = fwGeo.attributes.position.array;
   const colAttr = fwGeo.attributes.color.array;
@@ -107,7 +143,6 @@ function triggerSuccessFireworks(dockPos) {
     fwVel[i * 3 + 1] = speed * Math.sin(phi) * Math.sin(theta);
     fwVel[i * 3 + 2] = speed * Math.cos(phi);
 
-    // 金黃、翠綠、亮青三色煙火
     const pType = Math.random();
     if (pType < 0.33) {
       colAttr[i * 3] = 1.0; colAttr[i * 3 + 1] = 0.85; colAttr[i * 3 + 2] = 0.1;
@@ -249,6 +284,8 @@ document.getElementById('btn-lang').onclick = () => {
     btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
   }
 
+  updateCollapseButtonText();
+
   if (currentNarrativeKey && narrativeBox.style.opacity == 1) {
     clearTimeout(typeWriterTick);
     narrativeText.textContent = i18n.t(currentNarrativeKey);
@@ -256,7 +293,8 @@ document.getElementById('btn-lang').onclick = () => {
 };
 
 let eggClicks = 0;
-document.getElementById('title-tag').onclick = () => {
+document.getElementById('title-tag').onclick = (e) => {
+  e.stopPropagation(); // 避免點擊彩蛋觸發折疊
   if (fsm.difficulty === Difficulty.SCIENTIST) {
     alert(i18n.t('alertSci'));
     return;
@@ -412,7 +450,6 @@ function animate() {
     if(typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
     playNarrative('narrSuccess', 5000);
     
-    // 激發煙火特效
     triggerSuccessFireworks(phys.pos);
 
     setTimeout(() => {
