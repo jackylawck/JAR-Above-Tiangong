@@ -93,7 +93,7 @@ function triggerSuccessFireworks(dockPos) {
   isFireworksActive = true;
   fireworkTimer = 0;
   fwMat.opacity = 1.0;
-  screenShake = 0.25;
+  screenShake = 0.35;
 
   const posAttr = fwGeo.attributes.position.array;
   const colAttr = fwGeo.attributes.color.array;
@@ -124,6 +124,7 @@ function triggerSuccessFireworks(dockPos) {
   fwGeo.attributes.color.needsUpdate = true;
 }
 
+// 靜態向量複用 (Zero-GC)
 const _rawThrust = new THREE.Vector3();
 const _rawTorque = new THREE.Vector3();
 const _deltaThrust = new THREE.Vector3();
@@ -131,8 +132,8 @@ const _deltaTorque = new THREE.Vector3();
 const _screenPos = new THREE.Vector3();
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
 const _imuWrapper = { acc: null, gyro: null }; 
-let currentActualThrust = new THREE.Vector3();
-let currentActualTorque = new THREE.Vector3();
+const currentActualThrust = new THREE.Vector3();
+const currentActualTorque = new THREE.Vector3();
 
 let typeWriterTimeout = null;
 let typeWriterTick = null;
@@ -144,7 +145,7 @@ function playNarrative(key, duration = 4000) {
   clearTimeout(typeWriterTimeout);
   clearTimeout(typeWriterTick);
   narrativeText.textContent = '';
-  if(narrativeBox) narrativeBox.style.opacity = 1;
+  if (narrativeBox) narrativeBox.style.opacity = 1;
   let i = 0;
   function type() {
     if (i < text.length) {
@@ -153,7 +154,7 @@ function playNarrative(key, duration = 4000) {
       typeWriterTick = setTimeout(type, 30);
     } else {
       typeWriterTimeout = setTimeout(() => {
-        if(narrativeBox) narrativeBox.style.opacity = 0;
+        if (narrativeBox) narrativeBox.style.opacity = 0;
       }, duration);
     }
   }
@@ -182,14 +183,14 @@ function startNewMission() {
   isMissionActive = true;
   isFireworksActive = false;
   fwMat.opacity = 0;
-  if(missionReport) missionReport.classList.add('hidden');
+  if (missionReport) missionReport.classList.add('hidden');
   
   if (isKid) playNarrative('narrKid');
   else if (fsm.difficulty === Difficulty.SCIENTIST) playNarrative('narrSci');
   else playNarrative('narrPro');
 }
 
-if(btnRestart) btnRestart.onclick = () => { audio.playRadioBeep(); startNewMission(); };
+if (btnRestart) btnRestart.onclick = () => { audio.playRadioBeep(); startNewMission(); };
 
 let diffIndex = 0;
 const diffLevels = [Difficulty.KID, Difficulty.PRO, Difficulty.SCIENTIST];
@@ -263,7 +264,7 @@ document.getElementById('title-tag').onclick = (e) => {
 };
 
 // ==========================================
-// 系統主迴圈 (Main Pipeline Loop)
+// 系統主迴圈 (Main Pipeline Loop - Zero GC)
 // ==========================================
 function animate() {
   requestAnimationFrame(animate);
@@ -272,7 +273,7 @@ function animate() {
 
   const isKid = fsm.difficulty === Difficulty.KID;
 
-  // 平移與姿態指令映射
+  // 1. 搖桿輸入映射
   _rawThrust.set(
     controls.transInput.x * 2.5,
     0,
@@ -285,30 +286,32 @@ function animate() {
     0
   );
 
-  const distToRing = Math.hypot(
-    engine.state[0] - targetRingPos.x,
-    engine.state[1] - targetRingPos.y,
-    engine.state[2] - targetRingPos.z
-  );
+  const dx = engine.state[0] - targetRingPos.x;
+  const dy = engine.state[1] - targetRingPos.y;
+  const dz = engine.state[2] - targetRingPos.z;
+  const distToRingSq = dx * dx + dy * dy + dz * dz;
+  const distToRing = Math.sqrt(distToRingSq);
 
-  // 兒童模式：終端自動減速與輔助對心
+  // 2. 兒童模式：終端自動減速與輔助對心
   if (isKid && isMissionActive && fsm.mode !== MissionModes.ABORT) {
     if (Math.abs(controls.transInput.y) < 0.05 && engine.state[5] > -0.15 && distToRing > 1.2) {
       _rawThrust.z -= 0.35;
     }
     if (distToRing < 20.0) {
-      _rawThrust.x -= (engine.state[0] - targetRingPos.x) * 0.18;
-      _rawThrust.y -= (engine.state[1] - targetRingPos.y) * 0.18;
+      _rawThrust.x -= dx * 0.18;
+      _rawThrust.y -= dy * 0.18;
     }
     if (distToRing < 2.5 && engine.state[5] < -0.2) {
       engine.state[5] *= 0.94;
     }
   }
 
-  // 任務結束時煞停
+  // 3. 任務結束時安全鎖定
   if (!isMissionActive) {
     _rawThrust.set(0, 0, 0);
     _rawTorque.set(0, 0, 0);
+    currentActualThrust.set(0, 0, 0);
+    currentActualTorque.set(0, 0, 0);
     engine.state[3] = 0;
     engine.state[4] = 0;
     engine.state[5] = 0;
@@ -335,9 +338,21 @@ function animate() {
 
   const phys = engine.step(dt, currentActualThrust, currentActualTorque);
   
-  mekf.qNominal.copy(phys.quat);
+  // 4. MEKF 航太姿態融合
+  const starQuat = fdir.voteStarSensors(phys.quat);
+  _imuWrapper.acc = phys.accBody;
+  _imuWrapper.gyro = engine.omega;
+  sync.pushSample(now, _imuWrapper, phys.pos, starQuat);
 
-  // 相機同步
+  const syncdData = sync.getInterpolatedSample(now - 40);
+  if (syncdData) {
+    mekf.predict(dt, syncdData.gyro, syncdData.acc);
+    mekf.update(syncdData.starQuat, syncdData.lidarPos, null, true, true);
+  } else {
+    mekf.qNominal.copy(phys.quat);
+  }
+
+  // 5. 相機位置同步與衝擊震顫
   if (screenShake > 0.001) {
     camera.position.set(
       phys.pos.x + (Math.random() - 0.5) * screenShake,
@@ -348,16 +363,16 @@ function animate() {
   } else {
     camera.position.copy(phys.pos);
   }
-  camera.quaternion.copy(phys.quat);
+  camera.quaternion.copy(mekf.qNominal);
 
-  // 準星投影
+  // 6. CBARS 準星投影
   _screenPos.copy(targetRingPos).project(camera);
   const cx = (_screenPos.x * window.innerWidth) / 2;
   const cy = (-_screenPos.y * window.innerHeight) / 2;
   reticle.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
 
   const speed = phys.vel.length();
-  _euler.setFromQuaternion(phys.quat);
+  _euler.setFromQuaternion(mekf.qNominal);
 
   const lerpUI = 0.2;
   displayRange += (distToRing - displayRange) * lerpUI;
@@ -369,7 +384,7 @@ function animate() {
   uiFuel.textContent = displayFuel.toFixed(1);
   uiAlt.textContent = (400 + (35 - phys.pos.z) / 1000).toFixed(1);
   uiRpy.textContent = `${THREE.MathUtils.radToDeg(_euler.x).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.y).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.z).toFixed(0)}`;
-  uiOffset.textContent = Math.hypot(phys.pos.x - targetRingPos.x, phys.pos.y - targetRingPos.y).toFixed(2);
+  uiOffset.textContent = Math.hypot(dx, dy).toFixed(2);
 
   const totalDist = isKid ? 35.0 : 80.0;
   const progressVal = Math.min(100, Math.max(0, (1.0 - displayRange / totalDist) * 100));
@@ -397,7 +412,7 @@ function animate() {
 
   if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(distToRing);
 
-  // 🚀 關鍵修復：傳入三維全機體坐標進行實體碰撞與對接判定
+  // 7. FSM 狀態判定 (全機體 3D 碰撞箱)
   const fsmResult = fsm.evaluate(distToRing, speed, phys.pos);
   
   if (!impactFX.isExploding && isMissionActive) {
@@ -405,12 +420,12 @@ function animate() {
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
-  // 🚀 觸發碰撞解體大爆炸
+  // 💥 碰撞解體大爆炸
   if (fsmResult.statusKey === 'statusOverSpeed' && !impactFX.isExploding && isMissionActive) {
     isMissionActive = false;
     audio.playExplosion();
     playNarrative('narrFail', 3000);
-    screenShake = 0.8; // 激發強烈螢幕衝擊波震顫
+    screenShake = 0.8;
     
     uiFsm.textContent = i18n.t('statusFail');
     uiFsm.style.color = '#ff3355';
@@ -426,7 +441,7 @@ function animate() {
     });
   }
 
-  // 🚀 成功硬對接
+  // 🏆 成功硬對接 (Hard Dock)
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
     
@@ -434,7 +449,7 @@ function animate() {
     engine.state[1] = targetRingPos.y;
     engine.state[2] = targetRingPos.z + 0.35;
     
-    if(typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
+    if (typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
     playNarrative('narrSuccess', 5000);
     
     triggerSuccessFireworks(targetRingPos);
@@ -449,7 +464,7 @@ function animate() {
       else if (fuelLeft > 200 && errAngle < 6.0) grade = 'A';
       else if (fuelLeft > 100) grade = 'B';
       
-      if(missionReport) {
+      if (missionReport) {
         document.getElementById('score-grade').textContent = grade;
         document.getElementById('score-grade').style.color = grade === 'S' ? '#ffaa00' : (grade === 'A' ? '#00ffaa' : '#fff');
         document.getElementById('score-time').textContent = timeTaken;
@@ -460,6 +475,7 @@ function animate() {
     }, 2000);
   }
 
+  // 8. 視覺渲染與特效推進
   impactFX.update(dt);
 
   if (isFireworksActive) {
