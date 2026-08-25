@@ -18,15 +18,14 @@ export class I18nManager {
         transLabel: 'RCS 平移 (X/Y)',
         rotLabel: '姿態 (P/Y)',
         statusApproach: '沿軌進近 (V-BAR)',
-        statusDocked: '對接鎖定成功 (HARD DOCK)',
+        statusDocked: '🎉 HARD DOCK 對接成功！',
         statusOverSpeed: '警告：接近超速！',
         statusAbort: '緊急退避程序已啟動！',
         altLabel: '高度',
         rpyLabel: '姿態(R/P/Y)',
-        offsetLabel: '對接軸偏差',
-        covLabel: 'MEKF方差',
+        offsetLabel: '偏差',
+        progressLabel: '接近進度',
         
-        // --- 新增：動態 UI 與 J.A.R. 敘事對話 ---
         diffKid: '🧒 兒童模式',
         diffPro: '🛠️ 進階模式',
         diffSci: '🔬 科學模式',
@@ -38,7 +37,7 @@ export class I18nManager {
         narrPro: '指揮官，我是 J.A.R.，CW 導航已啟動，請控制接近率。',
         narrFail: '結構應力過載... 任務失敗！',
         statusFail: '💀 任務失敗 (MISSION FAILED)',
-        narrSuccess: '對接機構鎖定。J.A.R. 祝賀您，任務圓滿成功。',
+        narrSuccess: '對接機構鎖定！J.A.R. 祝賀您，任務圓滿成功！',
         alertSci: '🔬 [SCIENTIST MODE ACTIVE]\n科學模式已強制鎖定：禁止推力過載！',
         alertBird: '🦅 [CALLSIGN: FIRE BIRD UNLOCKED]\n已啟動「火鷹」特技飛行模式：RCS 推力限制解除！'
       },
@@ -56,15 +55,14 @@ export class I18nManager {
         transLabel: 'RCS Trans (X/Y)',
         rotLabel: 'Attitude (P/Y)',
         statusApproach: 'V-BAR APPROACH',
-        statusDocked: 'HARD DOCK SUCCESS',
+        statusDocked: '🎉 HARD DOCK SUCCESS!',
         statusOverSpeed: 'APPROACH OVER-SPEED!',
         statusAbort: 'EMERGENCY ABORT RETREAT!',
         altLabel: 'ALT',
         rpyLabel: 'ATT(R/P/Y)',
         offsetLabel: 'OFFSET',
-        covLabel: 'MEKF COV',
+        progressLabel: 'PROGRESS',
         
-        // --- 新增：動態 UI 與 J.A.R. 敘事對話 ---
         diffKid: '🧒 KID MODE',
         diffPro: '🛠️ PRO MODE',
         diffSci: '🔬 SCI MODE',
@@ -76,7 +74,7 @@ export class I18nManager {
         narrPro: 'Commander, this is J.A.R. CW Nav active. Control approach rate.',
         narrFail: 'Structural stress critical... Mission Failed!',
         statusFail: '💀 MISSION FAILED',
-        narrSuccess: 'Docking mechanism locked. J.A.R. congratulates you on a successful mission.',
+        narrSuccess: 'Docking mechanism locked! J.A.R. congratulates you on success!',
         alertSci: '🔬 [SCIENTIST MODE ACTIVE]\nLocked in Scientist Mode: Overdrive prohibited!',
         alertBird: '🦅 [CALLSIGN: FIRE BIRD UNLOCKED]\nAcrobatic mode engaged: RCS thrust limits removed!'
       }
