@@ -4,57 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover">
   
-    <!-- 🔍 Google 網站驗證 -->
-    <meta name="google-site-verification" content="JZ5UohX-CcP_fQV0_DI9VadkKY4ZoTTkUifL88-fIcY" />
-  
-  <!-- PWA & 全螢幕沉浸標籤 -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="天宮之上3D">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#020308">
-  <meta name="application-name" content="J.A.R. 天宮之上 3D">
 
-  <title>🛰️ J.A.R. 天宮之上 3D | JAR Above Tiangong 3D Space Docking Simulator</title>
+  <title>🛰️ J.A.R. 天宮之上 3D | Above Tiangong 3D</title>
   
-  <!-- SEO Meta 策略標籤 -->
-  <meta name="description" content="J.A.R. 天宮之上 3D：基於 WebGL 與 Three.js 的零記憶體分配太空交會對接模擬器。具備真實 CW 軌道動力學、MEKF 擴展卡爾曼濾波、大氣暮光散射與電影級天宮空間站。">
-  <meta name="keywords" content="天宮空間站, 太空對接, WebGL, Three.js, GNC, 軌道力學, 航太模擬器, iOS PWA, Tiangong 3D, Space Docking">
-  <meta name="author" content="J.A.R. Aerospace Lab">
-  <meta name="robots" content="index, follow">
-
-  <!-- Open Graph / Facebook / WhatsApp 預覽 -->
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="🛰️ J.A.R. 天宮之上 3D | 航太級太空交會對接模擬器">
-  <meta property="og:description" content="硬核純代碼生成！體驗手動操控神舟飛船精確對接天宮空間站。">
-  <meta property="og:image" content="./jarAboveTiangong512icon.png">
-
-  <!-- Twitter Card 標籤 -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="J.A.R. 天宮之上 3D Space Docking Simulator">
-  <meta name="twitter:description" content="體驗 60FPS 零卡頓的純 WebGL 太空交會對接物理模擬。">
-  <meta name="twitter:image" content="./jarAboveTiangong512icon.png">
-
-  <!-- PWA 圖示與 Manifest 清單 -->
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="./jarAboveTiangong192icon.png">
   <link rel="icon" type="image/png" sizes="512x512" href="./jarAboveTiangong512icon.png">
   <link rel="apple-touch-icon" href="./jarAboveTiangong192icon.png">
-  <link rel="apple-touch-icon" sizes="512x512" href="./jarAboveTiangong512icon.png">
-
-  <!-- Google 結構化數據 (Schema.org) -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "WebApplication",
-    "name": "J.A.R. 天宮之上 3D",
-    "alternateName": "JAR Above Tiangong 3D",
-    "description": "高精度 3D 天宮空間站交會對接 WebGL 模擬器，支援手動 RCS 推進與自動 CW 軌道導航。",
-    "applicationCategory": "GameApplication",
-    "operatingSystem": "All",
-    "browserRequirements": "Requires WebGL support"
-  }
-  </script>
 
   <link rel="stylesheet" href="css/mobile-style.css">
   
@@ -71,39 +32,42 @@
   <canvas id="webgl-canvas"></canvas>
 
   <div id="hud-overlay">
-    <!-- 頂部主飛行儀表 -->
+    <!-- 頂部主飛行儀表組 -->
     <div class="flight-director">
-      <div class="primary-telemetry">
-        <div class="pri-data-row">
-          <span id="title-tag" class="interactive" style="cursor:pointer;">
+      <!-- 主遙測視窗（點擊標題或按鈕即可捲起縮細） -->
+      <div id="telemetry-panel" class="primary-telemetry interactive">
+        <div class="pri-data-row" style="cursor: pointer;" id="panel-toggle-header">
+          <span id="title-tag">
             <span data-i18n="appTitle">J.A.R. 天宮之上 3D</span>
-            <span style="font-size:10px; opacity:0.6;">[V4.5-CDR]</span>
+            <span style="font-size:9px; opacity:0.6;">[V4.5]</span>
           </span>
+          <span id="btn-collapse" style="font-size: 11px; color:#00ffaa; opacity:0.85;">🔼 摺疊</span>
         </div>
         
-        <div class="pri-data-row" style="font-size: 15px; margin-top: 4px;">
-          <span data-i18n="rangeLabel">距離</span>: <span id="val-range" style="color:#fff;">0.00</span> m | 
-          <span data-i18n="rateLabel">速度</span>: <span id="val-rate" style="color:#fff;">0.00</span> m/s
+        <div class="pri-data-row" style="font-size: 14px; margin-top: 3px;">
+          <span><span data-i18n="rangeLabel">距離</span>: <span id="val-range" style="color:#fff;">0.00</span> m</span>
+          <span><span data-i18n="rateLabel">速度</span>: <span id="val-rate" style="color:#fff;">0.00</span> m/s</span>
         </div>
 
-        <div class="sec-data-row">
-          <span><span data-i18n="fsmLabel">狀態</span>: <span id="val-fsm" style="color:#00ffaa;">V-BAR APPROACH</span></span> | 
+        <div class="sec-data-row collapse-hide">
+          <span><span data-i18n="fsmLabel">狀態</span>: <span id="val-fsm" style="color:#00ffaa;">V-BAR</span></span>
           <span><span data-i18n="fuelLabel">燃料</span>: <span id="val-fuel">300.0</span> kg</span>
         </div>
 
-        <div id="telem-stream" style="font-size:9px; opacity:0.75; margin-top:6px; border-top:1px solid rgba(0,255,170,0.25); padding-top:4px; display:flex; gap:10px; flex-wrap:wrap; justify-content:space-between;">
-          <span>🛰️ <span data-i18n="altLabel">高度</span>: <span id="val-alt">400.0</span> km</span>
-          <span>⚡ <span data-i18n="rpyLabel">姿態(R/P/Y)</span>: <span id="val-rpy">0.0 / 0.0 / 0.0</span>°</span>
-          <span>🎯 <span data-i18n="offsetLabel">偏差</span>: <span id="val-offset">0.00</span> m</span>
-          <span>🔄 <span data-i18n="progressLabel">接近進度</span>: <span id="val-progress" style="color:#00ffaa; font-weight:bold;">0%</span></span>
+        <div id="telem-stream" class="collapse-hide" style="font-size:9px; opacity:0.75; margin-top:5px; border-top:1px solid rgba(0,229,255,0.2); padding-top:3px; display:flex; gap:6px; flex-wrap:wrap; justify-content:space-between;">
+          <span>🛰️ <span id="val-alt">400.0</span>km</span>
+          <span>⚡ <span id="val-rpy">0/0/0</span>°</span>
+          <span>🎯 <span id="val-offset">0.00</span>m</span>
+          <span>🔄 <span id="val-progress" style="color:#00ffaa; font-weight:bold;">0%</span></span>
         </div>
       </div>
 
+      <!-- 控制按鈕組 -->
       <div class="btn-group interactive">
-        <button id="btn-diff" class="hud-btn interactive" style="border-color:#ffaa00; color:#ffaa00;">🛠️ 進階模式</button>
-        <button id="btn-mode" class="hud-btn interactive"><span data-i18n="modeBtn">模式: 自動</span></button>
-        <button id="btn-abort" class="hud-btn btn-abort interactive"><span data-i18n="abortBtn">緊急中止</span></button>
-        <button id="btn-lang" class="hud-btn interactive">EN / 繁中</button>
+        <button id="btn-diff" class="hud-btn" style="border-color:#ffaa00; color:#ffaa00;">🛠️ 進階</button>
+        <button id="btn-mode" class="hud-btn"><span data-i18n="modeBtn">自動</span></button>
+        <button id="btn-abort" class="hud-btn btn-abort"><span data-i18n="abortBtn">中止</span></button>
+        <button id="btn-lang" class="hud-btn">EN/繁</button>
       </div>
     </div>
 
@@ -116,7 +80,7 @@
     <!-- 底部虛擬雙搖桿 -->
     <div class="joystick-container">
       <div id="zone-trans" class="stick-zone interactive">
-        <span class="stick-label" data-i18n="transLabel">RCS 平移 (X/Y)</span>
+        <span class="stick-label" data-i18n="transLabel">平移 (X/Y)</span>
         <div id="knob-trans" class="stick-knob"></div>
       </div>
       <div id="zone-rot" class="stick-zone interactive">
