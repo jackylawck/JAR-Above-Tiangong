@@ -26,7 +26,6 @@ html, body {
   display: block;
 }
 
-/* 🚀 關鍵修復：Overlay 穿透，確保事件直達搖桿 */
 #hud-overlay {
   position: absolute;
   top: 0;
@@ -34,7 +33,7 @@ html, body {
   width: 100%;
   height: 100%;
   z-index: 10;
-  pointer-events: none; /* 穿透所有非按鈕區塊 */
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -42,10 +41,10 @@ html, body {
 }
 
 .interactive {
-  pointer-events: auto !important; /* 只有指定交互元素可接收點擊 */
+  pointer-events: auto !important;
 }
 
-/* --- 頂部儀表板 --- */
+/* 頂部儀表板 */
 .flight-director {
   display: flex;
   justify-content: space-between;
@@ -96,7 +95,7 @@ html, body {
   gap: 8px;
 }
 
-/* --- 按鈕群 --- */
+/* 控制按鈕 */
 .btn-group {
   display: flex;
   flex-direction: column;
@@ -130,7 +129,7 @@ html, body {
   color: #ff3355;
 }
 
-/* --- CBARS 瞄準具 --- */
+/* 瞄準具 */
 #crosshair-container {
   position: absolute;
   top: 50%;
@@ -159,7 +158,7 @@ html, body {
   transition: transform 0.05s linear;
 }
 
-/* --- 🚀 關鍵修復：搖桿容器與觸控區 --- */
+/* 搖桿專屬觸控區 (保證點擊必中) */
 .joystick-container {
   display: flex;
   justify-content: space-between;
@@ -167,6 +166,7 @@ html, body {
   width: 100%;
   padding-bottom: 12px;
   pointer-events: none;
+  z-index: 50;
 }
 
 .stick-zone {
@@ -174,10 +174,11 @@ html, body {
   width: 110px;
   height: 110px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 229, 255, 0.04) 0%, rgba(0, 229, 255, 0.15) 100%);
-  border: 1px solid rgba(0, 229, 255, 0.35);
-  box-shadow: 0 0 15px rgba(0, 229, 255, 0.12);
-  touch-action: none !important; /* 禁用瀏覽器默認手勢，確保 Touch 事件 100% 捕獲 */
+  background: radial-gradient(circle, rgba(0, 229, 255, 0.08) 0%, rgba(0, 229, 255, 0.25) 100%);
+  border: 2px solid rgba(0, 229, 255, 0.5);
+  box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+  touch-action: none !important;
+  pointer-events: auto !important;
   cursor: pointer;
 }
 
@@ -199,14 +200,14 @@ html, body {
   top: 50%; left: 50%;
   width: 44px; height: 44px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 255, 170, 0.7) 0%, rgba(0, 229, 255, 0.25) 100%);
+  background: radial-gradient(circle, rgba(0, 255, 170, 0.85) 0%, rgba(0, 229, 255, 0.4) 100%);
   border: 2px solid #00ffaa;
-  box-shadow: 0 0 10px #00ffaa;
+  box-shadow: 0 0 12px #00ffaa;
   transform: translate(-50%, -50%);
-  pointer-events: none; /* 避免按鈕本體阻礙父層觸控坐標計算 */
+  pointer-events: none;
 }
 
-/* --- 敘事框 --- */
+/* 敘事框 */
 .narrative-box {
   position: absolute;
   bottom: 130px;
@@ -226,7 +227,6 @@ html, body {
   align-items: center;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  transition: opacity 0.3s;
   pointer-events: none;
 }
 
@@ -239,7 +239,7 @@ html, body {
   font-size: 10px;
 }
 
-/* --- 結算彈窗 --- */
+/* 結算彈窗 */
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; width: 100%; height: 100%;
@@ -275,7 +275,7 @@ html, body {
   justify-content: space-between;
 }
 
-/* --- 橫屏太空艙左右分翼 --- */
+/* 橫屏樣式 */
 @media screen and (orientation: landscape) {
   #hud-overlay {
     padding: 6px 14px;
