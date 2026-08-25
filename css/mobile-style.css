@@ -26,6 +26,7 @@ html, body {
   display: block;
 }
 
+/* 🚀 關鍵修復：Overlay 穿透，確保事件直達搖桿 */
 #hud-overlay {
   position: absolute;
   top: 0;
@@ -33,7 +34,7 @@ html, body {
   width: 100%;
   height: 100%;
   z-index: 10;
-  pointer-events: none;
+  pointer-events: none; /* 穿透所有非按鈕區塊 */
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -41,20 +42,21 @@ html, body {
 }
 
 .interactive {
-  pointer-events: auto;
+  pointer-events: auto !important; /* 只有指定交互元素可接收點擊 */
 }
 
-/* --- 頂部儀表板與按鈕組 --- */
+/* --- 頂部儀表板 --- */
 .flight-director {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 8px;
   width: 100%;
+  pointer-events: none;
 }
 
 .primary-telemetry {
-  background: rgba(4, 16, 26, 0.72);
+  background: rgba(4, 16, 26, 0.75);
   border: 1px solid rgba(0, 229, 255, 0.35);
   box-shadow: 0 0 15px rgba(0, 229, 255, 0.15), inset 0 0 15px rgba(0, 229, 255, 0.05);
   border-radius: 8px;
@@ -67,7 +69,6 @@ html, body {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 捲起/折疊模式樣式 */
 .primary-telemetry.collapsed {
   max-width: 320px;
   padding: 5px 10px;
@@ -129,16 +130,7 @@ html, body {
   color: #ff3355;
 }
 
-.btn-abort.alert {
-  animation: alertBlink 0.6s infinite alternate;
-}
-
-@keyframes alertBlink {
-  from { background: rgba(255, 51, 85, 0.2); box-shadow: 0 0 5px #ff3355; }
-  to { background: rgba(255, 51, 85, 0.6); box-shadow: 0 0 15px #ff3355; }
-}
-
-/* --- CBARS 光學瞄準十字具 --- */
+/* --- CBARS 瞄準具 --- */
 #crosshair-container {
   position: absolute;
   top: 50%;
@@ -167,13 +159,14 @@ html, body {
   transition: transform 0.05s linear;
 }
 
-/* --- 底部虛擬雙搖桿 --- */
+/* --- 🚀 關鍵修復：搖桿容器與觸控區 --- */
 .joystick-container {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
   width: 100%;
-  padding-bottom: 8px;
+  padding-bottom: 12px;
+  pointer-events: none;
 }
 
 .stick-zone {
@@ -181,22 +174,24 @@ html, body {
   width: 110px;
   height: 110px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 229, 255, 0.03) 0%, rgba(0, 229, 255, 0.12) 100%);
-  border: 1px solid rgba(0, 229, 255, 0.25);
-  box-shadow: 0 0 12px rgba(0, 229, 255, 0.08);
-  touch-action: none;
+  background: radial-gradient(circle, rgba(0, 229, 255, 0.04) 0%, rgba(0, 229, 255, 0.15) 100%);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  box-shadow: 0 0 15px rgba(0, 229, 255, 0.12);
+  touch-action: none !important; /* 禁用瀏覽器默認手勢，確保 Touch 事件 100% 捕獲 */
+  cursor: pointer;
 }
 
 .stick-label {
   position: absolute;
-  top: -16px;
+  top: -18px;
   width: 100%;
   text-align: center;
   font-size: 10px;
   color: #00ffaa;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.5px;
   text-shadow: 0 0 4px rgba(0, 255, 170, 0.5);
+  pointer-events: none;
 }
 
 .stick-knob {
@@ -204,17 +199,17 @@ html, body {
   top: 50%; left: 50%;
   width: 44px; height: 44px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 255, 170, 0.6) 0%, rgba(0, 229, 255, 0.2) 100%);
+  background: radial-gradient(circle, rgba(0, 255, 170, 0.7) 0%, rgba(0, 229, 255, 0.25) 100%);
   border: 2px solid #00ffaa;
   box-shadow: 0 0 10px #00ffaa;
   transform: translate(-50%, -50%);
-  pointer-events: none;
+  pointer-events: none; /* 避免按鈕本體阻礙父層觸控坐標計算 */
 }
 
-/* --- 敘事字幕 --- */
+/* --- 敘事框 --- */
 .narrative-box {
   position: absolute;
-  bottom: 125px;
+  bottom: 130px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(3, 12, 22, 0.85);
@@ -232,6 +227,7 @@ html, body {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   transition: opacity 0.3s;
+  pointer-events: none;
 }
 
 .jar-tag {
@@ -243,7 +239,7 @@ html, body {
   font-size: 10px;
 }
 
-/* --- 任務結算彈窗 --- */
+/* --- 結算彈窗 --- */
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; width: 100%; height: 100%;
@@ -254,6 +250,7 @@ html, body {
   z-index: 100;
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
+  pointer-events: auto;
 }
 
 .modal-overlay.hidden {
@@ -269,7 +266,6 @@ html, body {
   width: 90%;
   max-width: 320px;
   color: #fff;
-  font-family: inherit;
 }
 
 .report-row {
@@ -279,69 +275,53 @@ html, body {
   justify-content: space-between;
 }
 
-/* ========================================================
-   🛰️ 核心修復：橫屏模式（Landscape Cockpit Split Layout）
-   ======================================================== */
+/* --- 橫屏太空艙左右分翼 --- */
 @media screen and (orientation: landscape) {
   #hud-overlay {
     padding: 6px 14px;
   }
-
-  /* 左翼：緊湊型遙測儀表，不擋正中央 */
   .primary-telemetry {
     max-width: 260px;
     padding: 6px 10px;
     font-size: 11px;
     background: rgba(4, 16, 26, 0.65);
   }
-
   .pri-data-row {
     font-size: 12px !important;
   }
-
   .sec-data-row {
     font-size: 9.5px;
   }
-
   #telem-stream {
     font-size: 8px !important;
     gap: 4px !important;
   }
-
-  /* 右翼：微型化控制按鈕 */
   .btn-group {
     gap: 4px;
   }
-
   .hud-btn {
     padding: 4px 6px;
     font-size: 9.5px;
     min-width: 62px;
   }
-
-  /* 底部搖桿向兩側完全收窄 */
   .stick-zone {
     width: 88px;
     height: 88px;
   }
-
   .stick-knob {
     width: 36px;
     height: 36px;
   }
-
   .stick-label {
-    top: -13px;
+    top: -14px;
     font-size: 8.5px;
   }
-
   .narrative-box {
     bottom: 12px;
     padding: 4px 10px;
     font-size: 10px;
     max-width: 45%;
   }
-
   #crosshair-container {
     width: 100px;
     height: 100px;
