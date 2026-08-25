@@ -55,6 +55,10 @@ let missionStartTime = performance.now();
 let isMissionActive = true;
 let isPanelCollapsed = false;
 
+// 姿態平滑變量 (Pitch & Yaw)
+let currentPitch = 0.0;
+let currentYaw = 0.0;
+
 function updateCollapseButtonText() {
   if (!btnCollapse) return;
   const isZh = i18n.currentLang === 'zh-HK';
@@ -73,7 +77,7 @@ function toggleTelemetryPanel() {
 
 if (panelToggleHeader) panelToggleHeader.onclick = toggleTelemetryPanel;
 
-// 煙火粒子系統
+// 煙火粒子
 const FIREWORK_COUNT = 600;
 const fwGeo = new THREE.BufferGeometry();
 const fwPos = new Float32Array(FIREWORK_COUNT * 3);
@@ -135,8 +139,6 @@ function triggerSuccessFireworks(dockPos) {
 const _rawThrust = new THREE.Vector3();
 const _screenPos = new THREE.Vector3();
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
-const _targetQuat = new THREE.Quaternion(0, 0, 0, 1);
-const _rotDelta = new THREE.Quaternion();
 const _imuWrapper = { acc: null, gyro: null }; 
 const currentActualThrust = new THREE.Vector3();
 
@@ -177,6 +179,8 @@ function startNewMission() {
   engine.state[4] = 0;
   engine.state[5] = isKid ? -0.25 : -0.15;
   
+  currentPitch = 0.0;
+  currentYaw = 0.0;
   engine.quat.set(0, 0, 0, 1);
   mekf.qNominal.set(0, 0, 0, 1);
   engine.omega.set(0, 0, 0);
@@ -268,37 +272,36 @@ document.getElementById('title-tag').onclick = (e) => {
 };
 
 // ==========================================
-// 系統主迴圈 (Main Pipeline Loop - Zero GC)
+// 系統主迴圈 (Main Pipeline Loop - Zero GC & 120Hz Smooth)
 // ==========================================
 function animate() {
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const dt = Math.min(clock.getDelta(), 0.033); // 限制單幀最大時間步長
   const now = performance.now();
 
   const isKid = fsm.difficulty === Difficulty.KID;
 
-  // 1. 平移指令映射
+  // 1. 平移推力映射
   _rawThrust.set(
     controls.transInput.x * 2.5,
     0,
     -controls.transInput.y * 3.5
   );
 
-  // 🚀 2. 姿態控制極致優化（Direct Angular Steering）
-  if (controls.isRotActive && isMissionActive) {
-    // 正在觸控搖桿：直接且靈敏地旋轉視角（上下 Pitch，左右 Yaw）
-    const pitchRate = controls.rotInput.y * 1.2; // 提高靈敏度
-    const yawRate = -controls.rotInput.x * 1.2;
-    
-    _euler.set(pitchRate * dt, yawRate * dt, 0, 'YXZ');
-    _rotDelta.setFromEuler(_euler);
-    engine.quat.multiply(_rotDelta).normalize();
-    engine.omega.set(pitchRate, yawRate, 0);
-  } else if (isMissionActive) {
-    // 🚀 手指放開搖桿：平滑啟動自動回正（1 秒內自動對齊正前方對接口）
-    const returnSpeed = isKid ? 0.08 : 0.04;
-    engine.quat.slerp(_targetQuat, returnSpeed);
-    engine.omega.set(0, 0, 0); // 瞬間消除慣性旋轉
+  // 🚀 2. 絕對姿態映射（徹底根治轉飛！推到盡最多偏 12 度，鬆手 0.2 秒精準回正）
+  if (isMissionActive) {
+    const maxAngleRad = isKid ? (12 * Math.PI / 180) : (22 * Math.PI / 180); // 偏轉極限
+    const targetPitch = controls.rotInput.y * maxAngleRad; // 向上推抬頭
+    const targetYaw = -controls.rotInput.x * maxAngleRad;  // 向左推向左看
+
+    // 平滑追隨目標角度 (彈簧阻尼平滑)
+    const smoothFactor = controls.isRotActive ? 0.25 : 0.15;
+    currentPitch += (targetPitch - currentPitch) * smoothFactor;
+    currentYaw += (targetYaw - currentYaw) * smoothFactor;
+
+    _euler.set(currentPitch, currentYaw, 0, 'YXZ');
+    engine.quat.setFromEuler(_euler);
+    engine.omega.set(0, 0, 0); // 消除殘留無效角速度
   }
 
   // 立體聲 RCS 音效
@@ -334,7 +337,6 @@ function animate() {
     engine.state[3] = 0;
     engine.state[4] = 0;
     engine.state[5] = 0;
-    engine.omega.set(0, 0, 0);
   }
 
   if (fsm.mode === MissionModes.ABORT) _rawThrust.set(0, 0, 1.0);
@@ -358,7 +360,6 @@ function animate() {
 
   const phys = engine.step(dt, currentActualThrust, new THREE.Vector3(0,0,0));
   
-  // 相機直接鎖定當前姿態
   mekf.qNominal.copy(phys.quat);
 
   // 相機同步
@@ -381,7 +382,6 @@ function animate() {
   reticle.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
 
   const speed = phys.vel.length();
-  _euler.setFromQuaternion(phys.quat);
 
   const lerpUI = 0.2;
   displayRange += (distToRing - displayRange) * lerpUI;
@@ -392,7 +392,7 @@ function animate() {
   uiRate.textContent = displaySpeed.toFixed(2);
   uiFuel.textContent = displayFuel.toFixed(1);
   uiAlt.textContent = (400 + (35 - phys.pos.z) / 1000).toFixed(1);
-  uiRpy.textContent = `${THREE.MathUtils.radToDeg(_euler.x).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.y).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.z).toFixed(0)}`;
+  uiRpy.textContent = `${THREE.MathUtils.radToDeg(currentPitch).toFixed(0)}/${THREE.MathUtils.radToDeg(currentYaw).toFixed(0)}/0`;
   uiOffset.textContent = Math.hypot(dx, dy).toFixed(2);
 
   const totalDist = isKid ? 35.0 : 80.0;
@@ -466,7 +466,7 @@ function animate() {
     setTimeout(() => {
       const timeTaken = ((performance.now() - missionStartTime) / 1000).toFixed(1);
       const fuelLeft = phys.fuel.toFixed(1);
-      const errAngle = THREE.MathUtils.radToDeg(Math.hypot(_euler.x, _euler.y, _euler.z)).toFixed(1);
+      const errAngle = THREE.MathUtils.radToDeg(Math.hypot(currentPitch, currentYaw)).toFixed(1);
       
       let grade = 'C';
       if (fuelLeft > 250 && errAngle < 3.0) grade = 'S';
