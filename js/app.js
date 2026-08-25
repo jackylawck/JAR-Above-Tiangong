@@ -73,7 +73,7 @@ function toggleTelemetryPanel() {
 
 if (panelToggleHeader) panelToggleHeader.onclick = toggleTelemetryPanel;
 
-// 煙火粒子
+// 煙火特效
 const FIREWORK_COUNT = 600;
 const fwGeo = new THREE.BufferGeometry();
 const fwPos = new Float32Array(FIREWORK_COUNT * 3);
@@ -198,10 +198,13 @@ let diffIndex = 0;
 const diffLevels = [Difficulty.KID, Difficulty.PRO, Difficulty.SCIENTIST];
 const diffKeys = ['diffKid', 'diffPro', 'diffSci'];
 
+// 預設為兒童模式 + 手動控制權
 fsm.setDifficulty(Difficulty.KID);
+fsm.setMode(MissionModes.MANUAL);
 btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
 btnDiff.style.borderColor = '#00ffaa';
 btnDiff.style.color = '#00ffaa';
+btnMode.textContent = i18n.t('modeManual');
 
 startNewMission();
 
@@ -214,15 +217,12 @@ btnDiff.onclick = () => {
   if (currentDiff === Difficulty.KID) {
     btnDiff.style.borderColor = '#00ffaa';
     btnDiff.style.color = '#00ffaa';
-    btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
   } else if (currentDiff === Difficulty.SCIENTIST) {
     btnDiff.style.borderColor = '#ff3344';
     btnDiff.style.color = '#ff3344';
-    btnMode.textContent = i18n.t('modeLocked');
   } else {
     btnDiff.style.borderColor = '#ffaa00';
     btnDiff.style.color = '#ffaa00';
-    btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
   }
   audio.playRadioBeep();
   startNewMission();
@@ -247,11 +247,7 @@ btnAbort.onclick = () => {
 document.getElementById('btn-lang').onclick = () => {
   i18n.toggleLanguage();
   btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
-  if (fsm.difficulty === Difficulty.SCIENTIST) {
-    btnMode.textContent = i18n.t('modeLocked');
-  } else {
-    btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
-  }
+  btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
   updateCollapseButtonText();
   if (currentNarrativeKey && narrativeBox.style.opacity == 1) {
     clearTimeout(typeWriterTick);
@@ -262,10 +258,6 @@ document.getElementById('btn-lang').onclick = () => {
 let eggClicks = 0;
 document.getElementById('title-tag').onclick = (e) => {
   e.stopPropagation();
-  if (fsm.difficulty === Difficulty.SCIENTIST) {
-    alert(i18n.t('alertSci'));
-    return;
-  }
   eggClicks++;
   if (eggClicks === 3) {
     alert(i18n.t('alertBird'));
@@ -284,38 +276,40 @@ function animate() {
 
   const isKid = fsm.difficulty === Difficulty.KID;
 
-  // 搖桿推力映射 (平移與姿態)
+  // 🚀 關鍵修復：手動輸入全面生效
+  // 平移搖桿：推前 (Y>0) 向空間站加速，拉後 (Y<0) 倒車煞車，左右 (X) 橫移
   _rawThrust.set(
-    controls.transInput.x * (isKid ? 2.5 : 1.0),
-    controls.transInput.y * (isKid ? 2.5 : 1.0),
-    0
+    controls.transInput.x * 2.5,
+    0,
+    -controls.transInput.y * 3.5
   );
   
+  // 姿態搖桿：俯仰 (Pitch) 與 偏航 (Yaw)
   _rawTorque.set(
-    controls.rotInput.y * 0.15,
-    -controls.rotInput.x * 0.15,
+    controls.rotInput.y * 0.25,
+    -controls.rotInput.x * 0.25,
     0
   );
 
   const currentDist = Math.hypot(engine.state[0], engine.state[1], engine.state[2] - targetRingPos.z);
 
-  // 兒童模式自動巡航與磁吸
+  // 兒童模式輔助：如果未輸入煞車，保持微前進；並在接近時磁吸自動對準
   if (isKid && isMissionActive && fsm.mode !== MissionModes.ABORT) {
-    if (controls.transInput.y >= -0.1 && engine.state[5] > -0.2) {
-      _rawThrust.z = -0.6;
+    if (Math.abs(controls.transInput.y) < 0.05 && engine.state[5] > -0.15) {
+      _rawThrust.z -= 0.5; // 自動微推力巡航
     }
     if (currentDist < 25.0) {
-      _rawThrust.x -= engine.state[0] * 0.15;
-      _rawThrust.y -= engine.state[1] * 0.15;
-      mekf.qNominal.slerp(new THREE.Quaternion(0, 0, 0, 1), 0.04);
+      _rawThrust.x -= engine.state[0] * 0.12;
+      _rawThrust.y -= engine.state[1] * 0.12;
+      mekf.qNominal.slerp(new THREE.Quaternion(0, 0, 0, 1), 0.05);
     }
   }
 
   if (fsm.mode === MissionModes.ABORT) _rawThrust.set(0, 0, 1.0);
 
   const massRatio = 3300.0 / (engine.massDry + engine.fuel); 
-  const maxThrustRate = 3.5 * massRatio; 
-  const maxTorqueRate = 2.0 * massRatio;
+  const maxThrustRate = 5.0 * massRatio; 
+  const maxTorqueRate = 3.5 * massRatio;
 
   _deltaThrust.subVectors(_rawThrust, currentActualThrust);
   if (_deltaThrust.lengthSq() > (maxThrustRate * dt) ** 2) {
@@ -363,7 +357,7 @@ function animate() {
   const speed = phys.vel.length();
   _euler.setFromQuaternion(mekf.qNominal);
 
-  const lerpUI = 0.15;
+  const lerpUI = 0.2;
   displayRange += (distToRing - displayRange) * lerpUI;
   displaySpeed += (speed - displaySpeed) * lerpUI;
   displayFuel += (phys.fuel - displayFuel) * lerpUI;
@@ -388,15 +382,6 @@ function animate() {
   } else {
     uiRange.style.color = '#ffffff';
     uiRange.style.textShadow = 'none';
-  }
-
-  if (speed > fsm.maxSafeApproachSpeed && distToRing < 15.0) {
-    uiRate.style.color = '#ff3355';
-    const glow = 8 + Math.sin(now / 150) * 6;
-    uiRate.style.textShadow = `0 0 ${glow}px #ff3355`;
-  } else {
-    uiRate.style.color = '#ffffff';
-    uiRate.style.textShadow = 'none';
   }
 
   if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(distToRing);
@@ -471,22 +456,15 @@ function animate() {
     if (fireworkTimer > 2.5) isFireworksActive = false;
   }
 
-  // 🚀 地球著色器時間更新（驅動城市燈光與地球自轉）
   if (earthShaderMat && earthShaderMat.uniforms.uTime) {
     earthShaderMat.uniforms.uTime.value = now * 0.0003;
   }
   if (clouds) clouds.rotation.y += dt * 0.004;
   if (clouds2) clouds2.rotation.y += dt * 0.008;
 
-  // 🚀 太陽日冕脈動呼吸
   if (corona) {
     const pulse = 1.0 + 0.06 * Math.sin(now / 1500);
     corona.scale.set(180 * pulse, 180 * pulse, 1);
-  }
-
-  // 空間站微振動
-  if (station) {
-    station.rotation.y = Math.sin(now * 0.0005) * 0.002;
   }
 
   if (beacons) {
@@ -496,13 +474,14 @@ function animate() {
     }
   }
   
+  // 🚀 噴焰響應搖桿
   if (rcsPlumes) {
     const tx = controls.transInput.x;
     const ty = controls.transInput.y;
-    if (rcsPlumes.left) rcsPlumes.left.material.opacity = Math.max(0, -tx * 0.9);
-    if (rcsPlumes.right) rcsPlumes.right.material.opacity = Math.max(0, tx * 0.9);
-    if (rcsPlumes.up) rcsPlumes.up.material.opacity = Math.max(0, -ty * 0.9);
-    if (rcsPlumes.down) rcsPlumes.down.material.opacity = Math.max(0, ty * 0.9);
+    if (rcsPlumes.left) rcsPlumes.left.material.opacity = Math.max(0, -tx * 0.95);
+    if (rcsPlumes.right) rcsPlumes.right.material.opacity = Math.max(0, tx * 0.95);
+    if (rcsPlumes.up) rcsPlumes.up.material.opacity = Math.max(0, ty * 0.95);
+    if (rcsPlumes.down) rcsPlumes.down.material.opacity = Math.max(0, -ty * 0.95);
   }
 
   impactFX.update(dt);
