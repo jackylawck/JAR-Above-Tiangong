@@ -15,7 +15,7 @@ const i18n = new I18nManager();
 const controls = new DualTouchControls();
 const mekf = new FullStateMEKF();
 const fdir = new FDIRSystem();
-const sync = new TimeSynchronizer(0.5);
+const sync = new TimeSynchronizer(64);
 const fsm = new MissionFSM();
 const engine = new SpacecraftEngine();
 const { 
@@ -68,12 +68,12 @@ function toggleTelemetryPanel() {
     else telemetryPanel.classList.remove('collapsed');
   }
   updateCollapseButtonText();
-  if (typeof audio.playRadioBeep === 'function') audio.playRadioBeep();
+  audio.playRadioBeep();
 }
 
 if (panelToggleHeader) panelToggleHeader.onclick = toggleTelemetryPanel;
 
-// 煙火粒子
+// 煙火粒子系統 (Zero-Allocation Pool)
 const FIREWORK_COUNT = 600;
 const fwGeo = new THREE.BufferGeometry();
 const fwPos = new Float32Array(FIREWORK_COUNT * 3);
@@ -81,7 +81,14 @@ const fwVel = new Float32Array(FIREWORK_COUNT * 3);
 const fwCol = new Float32Array(FIREWORK_COUNT * 3);
 fwGeo.setAttribute('position', new THREE.BufferAttribute(fwPos, 3));
 fwGeo.setAttribute('color', new THREE.BufferAttribute(fwCol, 3));
-const fwMat = new THREE.PointsMaterial({ size: 2.2, vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+const fwMat = new THREE.PointsMaterial({ 
+  size: 2.2, 
+  vertexColors: true, 
+  transparent: true, 
+  opacity: 0, 
+  blending: THREE.AdditiveBlending, 
+  depthWrite: false 
+});
 const fireworkParticles = new THREE.Points(fwGeo, fwMat);
 scene.add(fireworkParticles);
 
@@ -286,6 +293,13 @@ function animate() {
     0
   );
 
+  // 🚀 立體聲 RCS 音效同步觸發
+  if (controls.transInput.lengthSq() > 0.01 || controls.rotInput.lengthSq() > 0.01) {
+    const power = Math.max(controls.transInput.length(), controls.rotInput.length());
+    const pan = controls.transInput.x || controls.rotInput.x;
+    audio.playRCSBurst(power, pan);
+  }
+
   const dx = engine.state[0] - targetRingPos.x;
   const dy = engine.state[1] - targetRingPos.y;
   const dz = engine.state[2] - targetRingPos.z;
@@ -410,7 +424,7 @@ function animate() {
     uiRate.style.textShadow = 'none';
   }
 
-  if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(distToRing);
+  if (isMissionActive) audio.updateAdaptiveMusic(distToRing);
 
   // 7. FSM 狀態判定 (全機體 3D 碰撞箱)
   const fsmResult = fsm.evaluate(distToRing, speed, phys.pos);
@@ -449,7 +463,7 @@ function animate() {
     engine.state[1] = targetRingPos.y;
     engine.state[2] = targetRingPos.z + 0.35;
     
-    if (typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
+    audio.playSuccessChime();
     playNarrative('narrSuccess', 5000);
     
     triggerSuccessFireworks(targetRingPos);
@@ -457,7 +471,7 @@ function animate() {
     setTimeout(() => {
       const timeTaken = ((performance.now() - missionStartTime) / 1000).toFixed(1);
       const fuelLeft = phys.fuel.toFixed(1);
-      const errAngle = THREE.MathUtils.radToDeg(_euler.x**2 + _euler.y**2 + _euler.z**2).toFixed(1);
+      const errAngle = THREE.MathUtils.radToDeg(Math.hypot(_euler.x, _euler.y, _euler.z)).toFixed(1);
       
       let grade = 'C';
       if (fuelLeft > 250 && errAngle < 3.0) grade = 'S';
@@ -534,4 +548,5 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 });
