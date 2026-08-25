@@ -50,9 +50,10 @@ const telemetryPanel = document.getElementById('telemetry-panel');
 const btnCollapse = document.getElementById('btn-collapse');
 const panelToggleHeader = document.getElementById('panel-toggle-header');
 
+// 初始距離顯示直接設為 35 米
 let displayRange = 35.0, displaySpeed = 0.35, displayFuel = 300.0;
-let missionStartTime = 0;
-let isMissionActive = false;
+let missionStartTime = performance.now();
+let isMissionActive = true;
 let isPanelCollapsed = false;
 
 function updateCollapseButtonText() {
@@ -163,17 +164,16 @@ function playNarrative(key, duration = 4000) {
 }
 
 function startNewMission() {
-  // 兒童模式距離縮短一半 (35m) 且更正對齊；其他模式維持 80m
   const isKid = fsm.difficulty === Difficulty.KID;
   const startDist = isKid ? -35.0 : -80.0;
-  const randX = (Math.random() - 0.5) * (isKid ? 8 : 20);
-  const randZ = (Math.random() - 0.5) * (isKid ? 8 : 20);
+  const randX = (Math.random() - 0.5) * (isKid ? 4 : 20);
+  const randZ = (Math.random() - 0.5) * (isKid ? 4 : 20);
   
   engine.state[0] = randX;
   engine.state[1] = startDist;
   engine.state[2] = randZ;
   engine.state[3] = 0;
-  engine.state[4] = isKid ? 0.35 : 0.15; // 兒童模式起步更快
+  engine.state[4] = isKid ? 0.35 : 0.15;
   engine.state[5] = 0;
   
   engine.fuel = 300.0;
@@ -197,19 +197,20 @@ function startNewMission() {
 }
 
 if(btnRestart) btnRestart.onclick = () => { audio.playRadioBeep(); startNewMission(); };
-window.addEventListener('touchstart', () => { if(!isMissionActive) startNewMission(); }, {once: true});
-window.addEventListener('click', () => { if(!isMissionActive) startNewMission(); }, {once: true});
 
-// 難度仲裁
-let diffIndex = 0; // 預設直接開「🧒 兒童模式」
+// 初始化為兒童模式
+let diffIndex = 0;
 const diffLevels = [Difficulty.KID, Difficulty.PRO, Difficulty.SCIENTIST];
 const diffKeys = ['diffKid', 'diffPro', 'diffSci'];
 
 fsm.setDifficulty(Difficulty.KID);
-engine.thrustMultiplier = 6.0; // 兒童版推力加到 6 倍
+engine.thrustMultiplier = 6.0;
 btnDiff.textContent = i18n.t(diffKeys[diffIndex]);
 btnDiff.style.borderColor = '#00ffaa';
 btnDiff.style.color = '#00ffaa';
+
+// 預先觸發一次任務敘事
+playNarrative('narrKid');
 
 btnDiff.onclick = () => {
   diffIndex = (diffIndex + 1) % diffLevels.length;
@@ -221,7 +222,7 @@ btnDiff.onclick = () => {
     btnDiff.style.borderColor = '#00ffaa';
     btnDiff.style.color = '#00ffaa';
     btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
-    engine.thrustMultiplier = 6.0; // 6 倍平移推力
+    engine.thrustMultiplier = 6.0;
   } else if (currentDiff === Difficulty.SCIENTIST) {
     btnDiff.style.borderColor = '#ff3344';
     btnDiff.style.color = '#ff3344';
@@ -234,7 +235,7 @@ btnDiff.onclick = () => {
     engine.thrustMultiplier = 1.8;
   }
   audio.playRadioBeep();
-  if(isMissionActive) startNewMission();
+  startNewMission();
 };
 
 btnMode.onclick = () => {
@@ -261,7 +262,6 @@ document.getElementById('btn-lang').onclick = () => {
   } else {
     btnMode.textContent = fsm.mode === MissionModes.AUTO ? i18n.t('modeAuto') : i18n.t('modeManual');
   }
-
   updateCollapseButtonText();
 
   if (currentNarrativeKey && narrativeBox.style.opacity == 1) {
@@ -299,7 +299,6 @@ function animate() {
 
   const currentDist = engine.state[0]**2 + engine.state[1]**2 + engine.state[2]**2;
   
-  // 兒童模式磁吸引導更強
   if (fsm.assistMagnet && currentDist < 25.0 && fsm.mode !== MissionModes.ABORT) {
     const magnetPower = fsm.difficulty === Difficulty.KID ? 0.12 : 0.05;
     _rawThrust.x -= engine.state[0] * magnetPower;
@@ -365,7 +364,7 @@ function animate() {
   uiRange.textContent = displayRange.toFixed(2);
   uiRate.textContent = displaySpeed.toFixed(2);
   uiFuel.textContent = displayFuel.toFixed(1);
-  uiAlt.textContent = (400 + (phys.pos.y + 80) / 1000).toFixed(1);
+  uiAlt.textContent = (400 + (phys.pos.y + 35) / 1000).toFixed(1);
   uiRpy.textContent = `${THREE.MathUtils.radToDeg(_euler.x).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.y).toFixed(0)}/${THREE.MathUtils.radToDeg(_euler.z).toFixed(0)}`;
   uiOffset.textContent = Math.hypot(phys.pos.x, phys.pos.z).toFixed(2);
 
@@ -395,15 +394,14 @@ function animate() {
 
   if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(dist);
 
-  // 傳入相對 Z 深度判定是否衝過頭
-  const fsmResult = fsm.evaluate(dist, speed, phys.pos.y + 10.5);
+  // 🚀 修復：直接傳入真實世界 Y 坐標進行衝過頭判定
+  const fsmResult = fsm.evaluate(dist, speed, phys.pos.y);
   
   if (!impactFX.isExploding && isMissionActive) {
     uiFsm.textContent = i18n.t(fsmResult.statusKey);
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
-  // 致命超速碰撞
   if (fsmResult.statusKey === 'statusOverSpeed' && !impactFX.isExploding && isMissionActive) {
     isMissionActive = false;
     audio.playExplosion();
@@ -423,7 +421,6 @@ function animate() {
     });
   }
 
-  // 成功硬對接
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
     if(typeof audio.playSuccessChime === 'function') audio.playSuccessChime();
