@@ -13,12 +13,19 @@
 
   <title>🛰️ J.A.R. 天宮之上 3D | Above Tiangong 3D</title>
   
+  <meta name="description" content="J.A.R. 天宮之上 3D：Zero-Asset 航太級 WebGL 太空交會對接模擬器。">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="🛰️ J.A.R. 天宮之上 3D">
+  <meta property="og:description" content="航太級空間站交會對接模擬器">
+
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="./jarAboveTiangong192icon.png">
   <link rel="icon" type="image/png" sizes="512x512" href="./jarAboveTiangong512icon.png">
   <link rel="apple-touch-icon" href="./jarAboveTiangong192icon.png">
 
-  <link rel="stylesheet" href="css/mobile-style.css?v=8.0">
+  <!-- 預載入核心 CDN 模組 -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+  <link rel="stylesheet" href="css/mobile-style.css?v=9.3">
   
   <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
   <script type="importmap">
@@ -38,7 +45,7 @@
         <div class="pri-data-row" style="cursor: pointer;" id="panel-toggle-header">
           <span id="title-tag">
             <span data-i18n="appTitle">J.A.R. 天宮之上 3D</span>
-            <span style="font-size:9px; opacity:0.6;">[V8.0]</span>
+            <span style="font-size:9px; opacity:0.6;">[V9.3]</span>
           </span>
           <span id="btn-collapse" style="font-size: 11px; color:#00ffaa; opacity:0.85;">🔼 摺疊</span>
         </div>
@@ -106,6 +113,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=8.2"></script>
+  <script type="module" src="js/app.js?v=9.3"></script>
 </body>
 </html>
