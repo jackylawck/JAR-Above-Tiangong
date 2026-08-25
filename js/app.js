@@ -291,24 +291,21 @@ function animate() {
     engine.state[2] - targetRingPos.z
   );
 
-  // 🚀 兒童模式：終端自動減速與磁吸捕獲 (防止過沖)
+  // 兒童模式：終端自動減速與輔助對心
   if (isKid && isMissionActive && fsm.mode !== MissionModes.ABORT) {
-    // 遠處巡航推力
     if (Math.abs(controls.transInput.y) < 0.05 && engine.state[5] > -0.15 && distToRing > 1.2) {
       _rawThrust.z -= 0.35;
     }
-    // 橫向磁吸
     if (distToRing < 20.0) {
       _rawThrust.x -= (engine.state[0] - targetRingPos.x) * 0.18;
       _rawThrust.y -= (engine.state[1] - targetRingPos.y) * 0.18;
     }
-    // 🚀 終端主動減速：接近 2.5 米時自動平滑煞車至安全速度
     if (distToRing < 2.5 && engine.state[5] < -0.2) {
-      engine.state[5] *= 0.94; // 柔和減速
+      engine.state[5] *= 0.94;
     }
   }
 
-  // 🚀 物理剛體防穿模：對接完成後徹底煞停
+  // 任務結束時煞停
   if (!isMissionActive) {
     _rawThrust.set(0, 0, 0);
     _rawTorque.set(0, 0, 0);
@@ -338,12 +335,6 @@ function animate() {
 
   const phys = engine.step(dt, currentActualThrust, currentActualTorque);
   
-  // 🚀 物理實體防穿牆限制：飛船 Z 坐標不能小於 0.28m
-  if (isMissionActive && phys.pos.z < 0.28 && Math.hypot(phys.pos.x, phys.pos.y) < 1.0) {
-    engine.state[2] = 0.28;
-    engine.state[5] = Math.max(0, engine.state[5]); // 阻止繼續向內穿透
-  }
-
   mekf.qNominal.copy(phys.quat);
 
   // 相機同步
@@ -406,25 +397,26 @@ function animate() {
 
   if (isMissionActive && typeof audio.updateAdaptiveMusic === 'function') audio.updateAdaptiveMusic(distToRing);
 
-  // 狀態評估
-  const fsmResult = fsm.evaluate(distToRing, speed, phys.pos.z);
+  // 🚀 關鍵修復：傳入三維全機體坐標進行實體碰撞與對接判定
+  const fsmResult = fsm.evaluate(distToRing, speed, phys.pos);
   
   if (!impactFX.isExploding && isMissionActive) {
     uiFsm.textContent = i18n.t(fsmResult.statusKey);
     uiFsm.className = fsmResult.isAlert ? 'alert' : (fsmResult.isSuccess ? 'highlight' : '');
   }
 
-  // 碰撞解體
+  // 🚀 觸發碰撞解體大爆炸
   if (fsmResult.statusKey === 'statusOverSpeed' && !impactFX.isExploding && isMissionActive) {
     isMissionActive = false;
     audio.playExplosion();
     playNarrative('narrFail', 3000);
+    screenShake = 0.8; // 激發強烈螢幕衝擊波震顫
     
     uiFsm.textContent = i18n.t('statusFail');
     uiFsm.style.color = '#ff3355';
     uiFsm.style.fontSize = '16px';
     uiFsm.style.fontWeight = 'bold';
-    uiFsm.className = ''; 
+    uiFsm.className = 'alert'; 
 
     impactFX.triggerCatastrophicFailure(phys.pos, () => {
       setTimeout(() => {
@@ -438,7 +430,6 @@ function animate() {
   if (fsmResult.statusKey === 'statusDocked' && isMissionActive) {
     isMissionActive = false;
     
-    // 飛船鎖定在對接口前端 0.35 米（完美契合對接爪咬合視覺）
     engine.state[0] = targetRingPos.x;
     engine.state[1] = targetRingPos.y;
     engine.state[2] = targetRingPos.z + 0.35;
@@ -468,6 +459,8 @@ function animate() {
       }
     }, 2000);
   }
+
+  impactFX.update(dt);
 
   if (isFireworksActive) {
     fireworkTimer += dt;
@@ -516,7 +509,6 @@ function animate() {
     if (rcsPlumes.down) rcsPlumes.down.material.opacity = Math.max(0, -ty * 0.95);
   }
 
-  impactFX.update(dt);
   renderer.render(scene, camera);
 }
 
