@@ -11,31 +11,53 @@
   <canvas id="webgl-canvas"></canvas>
 
   <div id="hud-overlay">
-    <div class="header-bar">
-      <div class="telemetry-card">
-        <div id="title-tag" class="interactive">
-          <span data-i18n="appTitle" class="highlight">J.A.R. 天宮之上 3D</span> 
-          <span style="font-size:9px; opacity:0.7;">[V4.2]</span>
+    <!-- 頂部主飛行儀表 -->
+    <div class="flight-director">
+      <div class="primary-telemetry">
+        <div class="pri-data-row">
+          <span id="title-tag" class="interactive" style="cursor:pointer;">
+            <span data-i18n="appTitle">J.A.R. 天宮之上 3D</span>
+            <span style="font-size:10px; opacity:0.6;">[V4.5-CDR]</span>
+          </span>
         </div>
-        <div><span data-i18n="fsmLabel">狀態</span>: <span id="val-fsm" class="highlight">V-BAR APPROACH</span></div>
-        <div><span data-i18n="rangeLabel">距離</span>: <span id="val-range">0.00</span> m | <span data-i18n="rateLabel">速度</span>: <span id="val-rate">0.00</span> m/s</div>
-        <div><span data-i18n="biasLabel">MEKF 零偏</span>: <span id="val-bias">0.000, 0.000</span> rad/s</div>
-        <div><span data-i18n="fdirLabel">星敏冗餘</span>: <span id="val-fdir" style="color:#00ff66;">3/3 TMR NOMINAL</span></div>
-        <div><span data-i18n="fuelLabel">燃料</span>: <span id="val-fuel">300.0</span> kg | <span data-i18n="massLabel">總重</span>: <span id="val-mass">3300.0</span> kg</div>
+        
+        <!-- 一級關鍵數據 -->
+        <div class="pri-data-row" style="font-size: 15px; margin-top: 4px;">
+          <span data-i18n="rangeLabel">距離</span>: <span id="val-range" style="color:#fff;">0.00</span> m | 
+          <span data-i18n="rateLabel">速度</span>: <span id="val-rate" style="color:#fff;">0.00</span> m/s
+        </div>
+
+        <!-- 二級系統狀態 -->
+        <div class="sec-data-row">
+          <span><span data-i18n="fsmLabel">狀態</span>: <span id="val-fsm" style="color:#00ffaa;">V-BAR APPROACH</span></span> | 
+          <span><span data-i18n="fuelLabel">燃料</span>: <span id="val-fuel">300.0</span> kg</span>
+        </div>
+
+        <!-- 三級即時遙測流 (Telemetry Stream) -->
+        <div id="telem-stream" style="font-size:9px; opacity:0.75; margin-top:6px; border-top:1px solid rgba(0,255,170,0.25); padding-top:4px; display:flex; gap:10px; flex-wrap:wrap;">
+          <span>🛰️ <span data-i18n="altLabel">高度</span>: <span id="val-alt">400.0</span> km</span>
+          <span>⚡ <span data-i18n="rpyLabel">姿態(R/P/Y)</span>: <span id="val-rpy">0.0 / 0.0 / 0.0</span>°</span>
+          <span>🎯 <span data-i18n="offsetLabel">對接軸偏差</span>: <span id="val-offset">0.00</span> m</span>
+          <span>⏱️ <span data-i18n="covLabel">MEKF方差</span>: <span id="val-cov">0.0010</span></span>
+        </div>
       </div>
 
+      <!-- 控制按鈕組 -->
       <div class="btn-group interactive">
+        <button id="btn-diff" class="hud-btn" style="border-color:#ffaa00; color:#ffaa00;">🛠️ 進階模式</button>
         <button id="btn-mode" class="hud-btn"><span data-i18n="modeBtn">模式: 自動</span></button>
         <button id="btn-abort" class="hud-btn btn-abort"><span data-i18n="abortBtn">緊急中止</span></button>
         <button id="btn-lang" class="hud-btn">EN / 繁中</button>
       </div>
     </div>
 
+    <!-- CBARS 十字光學瞄準具 -->
     <div id="crosshair-container">
       <div class="crosshair-circle"></div>
       <div id="crosshair-reticle" class="crosshair-reticle"></div>
     </div>
 
+    <!-- 底部虛擬雙搖桿 -->
     <div class="joystick-container">
       <div id="zone-trans" class="stick-zone interactive">
         <span class="stick-label" data-i18n="transLabel">RCS 平移 (X/Y)</span>
