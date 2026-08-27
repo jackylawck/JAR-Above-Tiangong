@@ -1,9 +1,36 @@
 <!DOCTYPE html>
-<html lang="zh-HK">
+<html lang="zh-HK" prefix="og: https://ogp.me/ns#">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover">
   
+  <!-- 🔍 基礎 SEO 核心標籤 -->
+  <title>🛰️ J.A.R. 天宮之上 3D | 航太級太空站對接模擬器 (Above Tiangong 3D)</title>
+  <meta name="description" content="J.A.R. 天宮之上 3D 是一款基於 WebGL / Three.js 打造的高保真太空船交會對接模擬器。具備真實航太 GNC 姿態控制、APAS-89 對接機構、立體聲聲景與零記憶體開銷（Zero-GC）流暢手感。">
+  <meta name="keywords" content="天宮空間站, 太空對接, 神舟飛船, Three.js, WebGL, 3D模擬器, 航太模擬, GNC, PWA, Zero-Asset, iOS WebGL">
+  <meta name="author" content="J.A.R. Space Engineering">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://kylawck.github.io/">
+
+  <!-- 🌐 Open Graph / Facebook / LinkedIn 社交卡片 -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://kylawck.github.io/">
+  <meta property="og:title" content="🛰️ J.A.R. 天宮之上 3D | 航太級太空站對接模擬器">
+  <meta property="og:description" content="體驗 3A 級高保真天宮空間站第一人稱對接！純代碼極致渲染、真實物理力學與 120Hz 絲滑操控。">
+  <meta property="og:image" content="https://kylawck.github.io/jarAboveTiangong512icon.png">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
+  <meta property="og:image:alt" content="J.A.R. 天宮之上 3D 模擬器標誌">
+  <meta property="og:locale" content="zh_HK">
+  <meta property="og:site_name" content="J.A.R. 天宮之上 3D">
+
+  <!-- 🐦 Twitter Cards -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="🛰️ J.A.R. 天宮之上 3D | Above Tiangong 3D">
+  <meta name="twitter:description" content="極致流暢的 WebGL 天宮空間站交會對接模擬器。純前端 Zero-Asset，支援手機端 PWA 與雙搖桿操控。">
+  <meta name="twitter:image" content="https://kylawck.github.io/jarAboveTiangong512icon.png">
+
+  <!-- 📱 PWA 與行動裝置設定 -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="天宮之上3D">
@@ -11,21 +38,52 @@
   <meta name="theme-color" content="#020308">
   <meta name="application-name" content="J.A.R. 天宮之上 3D">
 
-  <title>🛰️ J.A.R. 天宮之上 3D | Above Tiangong 3D</title>
-  
-  <meta name="description" content="J.A.R. 天宮之上 3D：Zero-Asset 航太級 WebGL 太空交會對接模擬器。">
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="🛰️ J.A.R. 天宮之上 3D">
-  <meta property="og:description" content="航太級空間站交會對接模擬器">
+  <!-- 🛡️ 企業級安全策略：Content Security Policy (CSP) 與權限隔離 -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com;
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' data: blob: https://kylawck.github.io;
+    font-src 'self' data:;
+    connect-src 'self' https://cdnjs.cloudflare.com https://unpkg.com;
+    media-src 'self' data:;
+    object-src 'none';
+    base-uri 'self';
+    form-action 'none';
+  ">
+  <meta http-equiv="Permissions-Policy" content="accelerometer=(self), gyroscope=(self), microphone=(), camera=(), geolocation=(), payment=()">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
 
+  <!-- 📌 圖示與 Manifest -->
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="./jarAboveTiangong192icon.png">
   <link rel="icon" type="image/png" sizes="512x512" href="./jarAboveTiangong512icon.png">
   <link rel="apple-touch-icon" href="./jarAboveTiangong192icon.png">
 
-  <!-- 預載入核心 CDN 模組 -->
+  <!-- 📊 Schema.org 結構化資料 (JSON-LD)，提升搜尋引擎評分 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "J.A.R. 天宮之上 3D",
+    "alternateName": "Above Tiangong 3D",
+    "url": "https://kylawck.github.io/",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "All modern web browsers with WebGL support (iOS, Android, Windows, macOS)",
+    "description": "3A 級高保真天宮空間站航太對接模擬器，具備完整的 GNC 姿態控制、物理碰撞盒、APAS-89 機構與立體聲音效。",
+    "inLanguage": ["zh-HK", "en"],
+    "screenshot": "https://kylawck.github.io/jarAboveTiangong512icon.png",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "HKD"
+    }
+  }
+  </script>
+
+  <!-- 預載入 CDN 模組 -->
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-  <link rel="stylesheet" href="css/mobile-style.css?v=9.3">
+  <link rel="stylesheet" href="css/mobile-style.css?v=10.0">
   
   <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
   <script type="importmap">
@@ -45,7 +103,7 @@
         <div class="pri-data-row" style="cursor: pointer;" id="panel-toggle-header">
           <span id="title-tag">
             <span data-i18n="appTitle">J.A.R. 天宮之上 3D</span>
-            <span style="font-size:9px; opacity:0.6;">[V9.3]</span>
+            <span style="font-size:9px; opacity:0.6;">[V10.0]</span>
           </span>
           <span id="btn-collapse" style="font-size: 11px; color:#00ffaa; opacity:0.85;">🔼 摺疊</span>
         </div>
@@ -113,6 +171,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=9.8"></script>
+  <script type="module" src="js/app.js?v=10.0"></script>
 </body>
 </html>
